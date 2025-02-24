@@ -134,6 +134,9 @@ Main:
     lda #0
     sta v_arg001
     jsr ClearScreen
+    lda INIDISP
+    and #$0F
+    sta INIDISP
     lda boot_start
     sta v_loop001
     sta w_var001
@@ -146,13 +149,16 @@ Main:
     stz init_text_index
     lda boot_title+1
     sta v_arg001
+    lda #0
+    sta v_arg003 
+    sta v_arg004
     .loop:
     lda init_text_index
     sta v_arg002
     lda init_text_hor
-    sta v_arg003
-    lda init_text_ver
     sta v_arg004
+    lda init_text_ver
+    sta v_arg005
     jsr RenderString 
     lda init_text_ver
     adc pos_y_offset
@@ -162,13 +168,18 @@ Main:
     cpy v_loop001
     bne .loop
 
+    cli
+    per $8
+    pla 
+    sta $09
+    pla 
+    sta $08
     ; if (input_hi & 0x08 | BUTTON_DOWN) {
     ; pointer_y += pointer_y_offset;
     ; pointer++; }
     ; if (input_hi & 0x04 | BUTTON_UP) {
     ; pointer_y -= pointer_y_offset;
     ; pointer--; }
-    cli
     init_CheckInput:
     lda input_hi
     and #%00001000
@@ -218,7 +229,7 @@ engine_wait:
 engine_wait_loop:
     lda vblanking_done
     beq engine_wait_loop
-    jmp Init_CheckInput
+    jmp ($0008)
 
 .MACRO FetchProgram
     ; i = pointer * address_size
