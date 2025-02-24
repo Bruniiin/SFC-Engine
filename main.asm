@@ -7,13 +7,17 @@
 .include "defines.asm"
 .include "registers.asm"
 .include "encodeddata.asm"
+.include "test_program.asm"
 .define using_HIROM 0 ; SNESDEV requires lorom
 
 .ifdef using_HIROM
+    .bank $C0
     .segment "MAIN_hi"
-.endif
     .else
+        .bank $80
         .segment "MAIN_lo"
+.endif
+
 
 Main:
     Main
@@ -21,8 +25,7 @@ Main:
     FetchProgram
     ; phk
     ; plb
-    cli
-    jml ($0000)
+    jml ($000000)
 
 .MACRO Main
     phk
@@ -30,19 +33,21 @@ Main:
     nop
     nop
     nop
-    sei
     clc
     xce
+    sei
     cld
     rep #$38
     ldx #$1fff
     txs
+
     init5a22 ; Main Processor
     init5c77 ; Graphics Processor
     ClrMem 0 0 1    ; WRAM 
     ClrMem 80 0 1   ; VRAM
     ClrMem 0 0 1    ; OAM RAM
     ClrMem 20 200 1 ; CG RAM
+    
 .ENDMACRO
 
 .MACRO init5c77
@@ -125,29 +130,142 @@ Main:
 .ENDMACRO
 
 .MACRO InitEngine
+    php
+    lda #0
+    sta v_arg001
+    jsr ClearScreen
+    lda boot_start
+    sta v_loop001
+    sta w_var001
+
+    ; for (i = 0; i < v_loop001; i++) {
+    ;   RenderText(boot_title, i_text_index, i_text_hor, i_text_ver);
+    ;   init_text_ver += 4;
+    ;   init_text_index++; }
+    ldy #0
+    stz init_text_index
+    lda boot_title+1
+    sta v_arg001
+    .loop:
+    lda init_text_index
+    sta v_arg002
+    lda init_text_hor
+    sta v_arg003
+    lda init_text_ver
+    sta v_arg004
+    jsr RenderString 
+    lda init_text_ver
+    adc pos_y_offset
+    sta init_text_ver
+    inc init_text_index
+    iny
+    cpy v_loop001
+    bne .loop
+
+    ; if (input_hi & 0x08 | BUTTON_DOWN) {
+    ; pointer_y += pointer_y_offset;
+    ; pointer++; }
+    ; if (input_hi & 0x04 | BUTTON_UP) {
+    ; pointer_y -= pointer_y_offset;
+    ; pointer--; }
+    cli
+    init_CheckInput:
+    lda input_hi
+    and #%00001000
+    bne +
+    lda pointer
+    cmp w_var001
+    beq +
+    lda pointer_y
+    clc
+    adc pos_y_offset
+    sta pointer_y
+    inc pointer
+  + lda input_hi
+    and #%00000100
+    bne +
+    lda pointer
+    beq +
+    lda pointer_y
+    sec
+    sbc pos_y_offset
+    sta pointer_y
+    dec pointer
+
+    ; RenderUi(pointer_obj, 0, pointer_x, pointer_y)
+  + lda pointer_obj
+    sta v_arg001
+    lda pointer_x
+    sta v_arg002
+    lda pointer_y
+    sta v_arg003
+    jsr RenderUi
+
+    ; if (input_hi & 0x80) {
+    ; ... }
+    ; else {
+    ; engine_wait() }
+    init_StartProgram:
+    lda input_hi
+    and #%10000000
+    bne engine_wait
+    sei
+    plp
 .ENDMACRO
 
+engine_wait: 
+    stz vblanking_done
+engine_wait_loop:
+    lda vblanking_done
+    beq engine_wait_loop
+    jmp Init_CheckInput
+
 .MACRO FetchProgram
-    php
+    ; i = pointer * address_size
+    ; address = boot_address[i]
     sep #$38
     lda #0
     tcd
+    lda pointer
+    sta WRMPYA 
+    lda #3
+    sta WRMPYB
     nop
-    ldy #ff
-  - iny
-    cpy #$ff
-    beq +
-    lda boot, y
-    cmp #$80
-    bcc -
+    nop
+    lda RDMPYL
+    tay
+    iny
+    lda boot_address, y
     sta $00
     iny
-    lda boot, y
-    sta $00+1
-    bra .return
-  + stp
-    .return
-    plp
+    lda boot_address, y
+    sta $01
+    ; iny 
+    ; lda boot_address, y
+    ; sta $00+2
+    lda #0
+    sta v_arg001
+    jsr ClearScreen
+      ;   php
+      ;   sep #$38
+      ;   lda #0
+      ;   tcd
+      ;   nop
+      ;   ldy #ff
+      ; - iny
+      ;   cpy #$ff
+      ;   beq +
+      ;   lda boot, y
+      ;   cmp #$79
+      ;   bcc -
+      ;   sta $00
+      ;   iny
+      ;   lda boot, y
+      ;   sta $00+1
+      ;   bra .return
+      ; + stp
+      ;   .return:
+      ;   plp
 .ENDMACRO
 
 .MACRO ClrMem start_8, size_16, bus
@@ -184,3 +302,21 @@ setRegisterSize:
     .return:
     rts
 
+        ;   lda pos_x
+        ;   sta TILE_RENDER_QUEUE, y
+        ; - iny
+        ;   lda pos_y
+        ;  sta TILE_RENDER_QUEUE, y
+
+        ; sta TILE_RENDER_QUEUE, y 
+        ; iny
+        ; lda boot, y 
+        ; cmp #%
+        ; bne -
+        ; lda pos_y
+        ; adc #pos_y_offset
+        ; sta pos_y
+        ; inx
+        ; cpx v_loop001
+        ; bne -
+        ; cli
