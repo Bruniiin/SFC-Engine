@@ -9,6 +9,7 @@
 .include "encodeddata.asm"
 .include "test_program.asm"
 .define using_HIROM 0 ; SNESDEV requires lorom
+.define using_test_mode 0 ; something like https://tcrf.net/SFX_Test
 
 .ifdef using_HIROM
     .bank $C0
@@ -23,8 +24,6 @@ Main:
     Main
     InitEngine
     FetchProgram
-    ; phk
-    ; plb
     jml ($000000)
 
 .MACRO Main
@@ -37,7 +36,7 @@ Main:
     xce
     sei
     cld
-    rep #$38
+    xy16
     ldx #$1fff
     txs
 
@@ -47,7 +46,6 @@ Main:
     ClrMem 80 0 1   ; VRAM
     ClrMem 0 0 1    ; OAM RAM
     ClrMem 20 200 1 ; CG RAM
-    
 .ENDMACRO
 
 .MACRO init5c77
@@ -135,23 +133,25 @@ Main:
     sta v_arg001
     jsr ClearScreen
     lda INIDISP
-    and #$0F
+    and #$8F
     sta INIDISP
-    lda boot_start
+.ifdef using_test_mode
+    a16
+    lda boot_title
     sta v_loop001
-    sta w_var001
+    inc a
+    sta v_arg001
+    ; sta w_var001
 
     ; for (i = 0; i < v_loop001; i++) {
-    ;   RenderText(boot_title, i_text_index, i_text_hor, i_text_ver);
+    ;   RenderString(boot_title, init_text_index, 0, i_text_hor, i_text_ver, 0);
     ;   init_text_ver += 4;
     ;   init_text_index++; }
     ldy #0
     stz init_text_index
-    lda boot_title+1
-    sta v_arg001
     lda #0
     sta v_arg003 
-    sta v_arg004
+    sta v_arg006
     .loop:
     lda init_text_index
     sta v_arg002
@@ -168,7 +168,7 @@ Main:
     cpy v_loop001
     bne .loop
 
-    cli
+    sei
     per $8
     pla 
     sta $09
@@ -220,8 +220,8 @@ Main:
     lda input_hi
     and #%10000000
     bne engine_wait
-    sei
     plp
+.endif
 .ENDMACRO
 
 engine_wait: 
@@ -237,6 +237,8 @@ engine_wait_loop:
     sep #$38
     lda #0
     tcd
+.ifdef using_test_mode
+    a8
     lda pointer
     sta WRMPYA 
     lda #3
@@ -246,37 +248,19 @@ engine_wait_loop:
     lda RDMPYL
     tay
     iny
+.else
+    ldx #0
+.endif
+    a8
     lda boot_address, y
     sta $00
     iny
+    a16
     lda boot_address, y
     sta $01
-    ; iny 
-    ; lda boot_address, y
-    ; sta $00+2
     lda #0
     sta v_arg001
     jsr ClearScreen
-      ;   php
-      ;   sep #$38
-      ;   lda #0
-      ;   tcd
-      ;   nop
-      ;   ldy #ff
-      ; - iny
-      ;   cpy #$ff
-      ;   beq +
-      ;   lda boot, y
-      ;   cmp #$79
-      ;   bcc -
-      ;   sta $00
-      ;   iny
-      ;   lda boot, y
-      ;   sta $00+1
-      ;   bra .return
-      ; + stp
-      ;   .return:
-      ;   plp
 .ENDMACRO
 
 .MACRO ClrMem start_8, size_16, bus
@@ -313,21 +297,45 @@ setRegisterSize:
     .return:
     rts
 
-        ;   lda pos_x
-        ;   sta TILE_RENDER_QUEUE, y
-        ; - iny
-        ;   lda pos_y
-        ;  sta TILE_RENDER_QUEUE, y
-
-        ; sta TILE_RENDER_QUEUE, y 
-        ; iny
-        ; lda boot, y 
-        ; cmp #%
-        ; bne -
-        ; lda pos_y
-        ; adc #pos_y_offset
-        ; sta pos_y
-        ; inx
-        ; cpx v_loop001
-        ; bne -
-        ; cli
+    ;   php
+    ;   sep #$38
+    ;   lda #0
+    ;   tcd
+    ;   nop
+    ;   ldy #ff
+    ; - iny
+    ;   cpy #$ff
+    ;   beq +
+    ;   lda boot, y
+    ;   cmp #$79
+    ;   bcc -
+    ;   sta $00
+    ;   iny
+    ;   lda boot, y
+    ;   sta $00+1
+    ;   bra .return
+    ; + stp
+    ;   .return:
+    ;   plp
+    ; iny 
+    ; lda boot_address, y
+    ; sta $00+2
+    ; phk
+    ; plb
+    ;   lda pos_x
+    ;   sta TILE_RENDER_QUEUE, y
+    ; - iny
+    ;   lda pos_y
+    ;  sta TILE_RENDER_QUEUE, y
+    ; sta TILE_RENDER_QUEUE, y 
+    ; iny
+    ; lda boot, y 
+    ; cmp #%
+    ; bne -
+    ; lda pos_y
+    ; adc #pos_y_offset
+    ; sta pos_y
+    ; inx
+    ; cpx v_loop001
+    ; bne -
+    ; cli
