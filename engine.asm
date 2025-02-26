@@ -1,7 +1,7 @@
 .bank $F0
 .org $8000
 
-RenderScreen: ; args (tile_id, x, y, obj_x, obj_y, width, height)
+RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
     php
     pha
     phx
@@ -21,8 +21,9 @@ RenderScreen: ; args (tile_id, x, y, obj_x, obj_y, width, height)
     lda ($4), y
     sta local_obj_height
 
-    ; j = local_obj_width * obj_y + obj_x
-    ; k = screen_width / 2 * y + x
+    ; *tilemap = &address;
+    ; j = local_obj_width * obj_y + obj_x;
+    ; k = screen_width / 2 * y + x;
     ; for (i = 0; i < width*height; i++) {
         ; TILE_RENDER_QUEUE[k] = *tilemap[j]
         ; local_width++;
@@ -91,7 +92,7 @@ RenderScreen: ; args (tile_id, x, y, obj_x, obj_y, width, height)
     plp
     rts
 
-RenderString: ; args (list_id, string_offset, char_offset, x, y, max_size)
+RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     php
     pha
     phx
@@ -103,13 +104,14 @@ RenderString: ; args (list_id, string_offset, char_offset, x, y, max_size)
     lda #0
     sta local_var001 ; size iterator
 
-    ; j = list_id + string_offset * 20;
-    ; k = screen_width/2 * y + x; 
+    ; *address = &address;
+    ; j = address + (string_offset * 20);
+    ; k = (screen_width/2 * y) + x; 
     ; for (i = 0; i < max_size; i++)
     ; {  
-    ;   TILE_RENDER_QUEUE[k] = string_offset[j + char_offset];
+    ;   TILE_RENDER_QUEUE[k] = address[j + char_offset];
     ;   char_offset++;
-    ;   if (listoffset[j + char_offset] == %) {
+    ;   if (address[j + char_offset] == %) {
     ;       break;
     ;       }
     ; }
@@ -397,6 +399,23 @@ CheckCollisionWtoObj:
 InitializeObject:
 
 GetInput:
+    php
+    pha
+
+    lda NMITIMEN
+    ora #$81
+    sta NMITIMEN
+  - lda HVBJOY
+    and #$01
+    beq - 
+    a16
+    lda JOY1L
+    sta input_lo
+
+    pla
+    plp
+    rts 
+
 
 UpdateInput:
 
@@ -406,7 +425,9 @@ HDMAInit:
 
 ConvertBinDec:
 
-v_Multiply:
+; Math (A few math functions. I like writing math functions so i'll add many more of them.)
+
+m_Multiply: ; args (multiplicand, multiplier, (bool)m7_matrix)
     php
     lda v_arg_multiplicand
     sta WRMPYA
@@ -420,7 +441,7 @@ v_Multiply:
     plp
     rts
 
-v_Divide:
+m_Divide: ; args (dividend, divisor)
     php
     lda v_arg_dividendl
     sta WRDIVL
@@ -442,7 +463,92 @@ v_Divide:
     plp
     rts 
 
-vMath:
+m_GetDirection: ; args (x1, y1, x2, y2)
+    php
+    pha
+    phx
+    phy
+
+    lda v_arg001
+    ldx v_arg002
+    sec
+    sbc v_arg003
+    pha
+    txa
+    sec 
+    sbc v_arg004
+    sta ret_value+1
+    pla
+    sta ret_value    
+
+    ply
+    plx
+    pla 
+    plp 
+    rts
+
+m_Clamp: ; args (value, clamp_min, clamp_max)
+    php
+    pha
+    phx
+    phy
+
+    ; if (value < clamp_min) 
+    ;   value = clamp_min; 
+    ; else if (value > clamp_max)
+    ;   value = clamp_max;
+
+    lda v_arg002
+    cmp v_arg001
+    bcc +
+    sta v_arg001
+  + lda v_arg003
+    cmp v_arg001
+    bcs +
+    sta v_arg001
+
+  + ply 
+    plx
+    pla 
+    plp
+
+m_PowerOf ; args (base, exponent)
+    php
+    pha
+    phx
+    phy
+    ldx #0
+    lda v_arg001
+    ldx v_arg002
+    sta w_var001
+    stx v_loop001
+
+    ; ex. 2^16 = 65536; 
+    ; a = base;
+    ; for (i = 0; i < exponent; i++) {
+    ;   a = a * base; 
+    ; }
+    ; return a;
+
+    .loop:
+    lda v_arg001
+    sta M7A
+    lda w_var001
+    sta M7B
+    lda MPYL
+    sta v_arg001
+    inx
+    cpx v_loop001
+    bne .loop
+    sta ret_value
+
+    ply 
+    plx
+    pla 
+    plp
+    rts
+
+
 
     ; lda v_arg002
     ; sta TILE_RENDER_QUEUE_POS
