@@ -1,0 +1,27 @@
+a_button =
+b_button =
+x_button =
+y_button =
+l_button =
+r_button =
+start_button =
+select_button =
+up_pad =
+down_pad =
+left_pad =
+right_pad =
+stack_ptr =
+ 
+TILE_RENDER_QUEUE =
+TILE_RENDER_QUEUE_LENGTH =
+OBJ_ACTIVE_LIST =
+OBJ_ACTIVE_STATE =
+OBJ_ACTIVE_HOR =
+OBJ_ACTIVE_VER =
+OBJ_ACTIVE_VELOCITY =
+OBJ_ACTIVE_ANIM =
+DIALOG_QUEUE =
+TIMER_ARRAY =
+OBJ_AI_ROUTINE_LIST =
+COLLISION_WINDOW_1 =
+COLLISION_WINDOW_2 =
