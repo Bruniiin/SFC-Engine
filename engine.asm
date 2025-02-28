@@ -389,6 +389,29 @@ SetCameraPos: ; args (x, y, bg_layer)
     rts
 
 UpdateScroll: 
+    php
+    pha
+    phx
+    phy
+    ldx #0
+
+    a16
+    clc
+    .loop: 
+    lda scroll_reg_mirror_x, x 
+    sta BG_REG_OFFSET, x
+    inx
+    inx
+    iny
+    iny
+    lda scroll_reg_mirror_x, x
+    sta BG_REG_OFFSET, x
+
+    pla
+    plx 
+    ply
+    plp
+    rts
 
 CheckCollisionW:
 
@@ -419,7 +442,46 @@ GetInput:
 
 UpdateInput:
 
-DMAInit:
+DMAInit: ; args (a_bank, a_address, b_dest, b_dest_offset, length, format, channel, (bool)direction, (bool)auto)
+    php
+    pha
+    phx
+    phy
+    
+    a16
+    xy8
+    stz DMAPx
+    lda #DMAPx
+    tcd 
+    lda v_arg004
+    ldx v_arg003
+    sta CPU_REGS, x
+    lda v_arg002
+    sta A1TxL ; + A1TxH
+    ldx v_arg003
+    ldy v_arg001
+    stx BBADx
+    sty A1Bx
+    lda v_arg005
+    sta DASxL
+
+    lda v_arg008
+    ror
+    ror
+    sta DMAPx
+    lda v_arg009
+    rol
+    rol
+    rol
+    ora v_arg006
+    ora DMAPx
+    sta DMAPx
+
+    pla 
+    plx 
+    ply
+    plp
+    rts
 
 HDMAInit:
 
