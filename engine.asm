@@ -396,22 +396,38 @@ UpdateScroll:
     ldx #0
 
     a16
-    clc
-    .loop: 
     lda scroll_reg_mirror_x, x 
-    sta BG_REG_OFFSET, x
+    sta BG1HOFS
+    lda scroll_reg_mirror_y, x
+    sta BG1VOFS
     inx
-    inx
-    iny
-    iny
+    lda scroll_reg_mirror_x, x 
+    sta BG2HOFS
+    lda scroll_reg_mirror_y, x
+    sta BG2VOFS
+    inx 
+    lda scroll_reg_mirror_x, x 
+    sta BG3HOFS
+    lda scroll_reg_mirror_y, x
+    sta BG3VOFS
+    inx 
+    lda scroll_reg_mirror_x, x 
+    sta BG4HOFS
+    lda scroll_reg_mirror_y, x
+    sta BG4VOFS
+    inx 
     lda scroll_reg_mirror_x, x
-    sta BG_REG_OFFSET, x
-
+    sta M7HOFS
+    inx
+    lda scroll_reg_mirror_y, x
+    sta M7VOFS
+    
     pla
     plx 
     ply
     plp
     rts
+
 
 CheckCollisionW:
 
@@ -447,35 +463,81 @@ DMAInit: ; args (a_bank, a_address, b_dest, b_dest_offset, length, format, chann
     pha
     phx
     phy
-    
+    ldx #0
+    ldy #0
+
     a16
     xy8
+
     stz DMAPx
     lda #DMAPx
     tcd 
+    lda v_arg007
+    pha 
+    ror
+    ror
+    ror
+    ror
+    sta w_var001
+    .loop: 
+    lda #DMAPx, x
+    ora w_var001
+    sta DMAPx_mirror, y
+    inx
+    iny
+    iny 
+    cpx #7
+    bne .loop:
+
+    ; alternative implementation without looping
+    ; ora w_var001
+    ; sta DMAPx_mirror 
+    ; ora w_var001
+    ; sta BBADx_mirror
+    ; ora w_var001 
+    ; sta A1TxL_mirror
+    ; ora w_var001
+    ; sta A1TxH_mirror
+    ; ora w_var001
+    ; sta A1Bx_mirror
+    ; ora w_var001
+    ; sta DASxL_mirror
+    ; ora w_var001
+    ; sta DASxH_mirror
+
+    ldx v_arg003
+    ldy #0
     lda v_arg004
-    ldx v_arg003
-    sta CPU_REGS, x
+    sta registers, x
+    lda v_arg003
+    sta (BBADx_mirror), y
     lda v_arg002
-    sta A1TxL ; + A1TxH
-    ldx v_arg003
-    ldy v_arg001
-    stx BBADx
-    sty A1Bx
+    sta (A1TxL_mirror), y ; + A1TxH
+    lda v_arg001
+    sta (A1Bx_mirror), y
     lda v_arg005
-    sta DASxL
+    sta (DASxL_mirror), y 
 
     lda v_arg008
     ror
     ror
-    sta DMAPx
+    sta (DMAPx_mirror), y
     lda v_arg009
     rol
     rol
     rol
+    ora (DMAPx_mirror), y
     ora v_arg006
-    ora DMAPx
-    sta DMAPx
+    sta (DMAPx_mirror), y
+    pla
+    tay
+    sec
+    .loop_2: 
+    ror
+    dey
+    cpy #0
+    bne .loop_2
+    sta MDMAEN 
 
     pla 
     plx 
@@ -645,3 +707,7 @@ m_PowerOf ; args (base, exponent)
     ; ror
     ; ror 
     ; ror
+
+    ; iny
+    ; phy
+    ; iny
