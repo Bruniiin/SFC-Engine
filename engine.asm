@@ -220,7 +220,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     adc v_arg005
     sec
     sbc v_arg007
-    bmi +
+    bmi +   
     sta local_screen_y
     cmp screen_height
     bcs + 
@@ -418,7 +418,6 @@ UpdateScroll:
     inx 
     lda scroll_reg_mirror_x, x
     sta M7HOFS
-    inx
     lda scroll_reg_mirror_y, x
     sta M7VOFS
     
@@ -455,10 +454,9 @@ GetInput:
     plp
     rts 
 
-
 UpdateInput:
 
-DMAInit: ; args (a_bank, a_address, b_dest, b_dest_offset, length, format, channel, (bool)direction, (bool)auto)
+DMAInit: ; args (source_bank, source_address, dest, dest_offset, length, format, channel, (bool)direction, (bool)auto)
     php
     pha
     phx
@@ -466,28 +464,29 @@ DMAInit: ; args (a_bank, a_address, b_dest, b_dest_offset, length, format, chann
     ldx #0
     ldy #0
 
-    a16
-    xy8
-
+    a8
     stz DMAPx
     lda #DMAPx
     tcd 
     lda v_arg007
-    pha 
+    pha
     ror
     ror
     ror
     ror
-    sta w_var001
-    .loop: 
+    cmp DMAx_mirror
+    beq +
+    sta local_var001
+    a16    
+
+    .loop_1: 
     lda #DMAPx, x
-    ora w_var001
-    sta DMAPx_mirror, y
+    ora local_var001
+    sta DMAx_mirror, x
     inx
-    iny
-    iny 
-    cpx #7
-    bne .loop:
+    inx
+    cpx #14
+    bne .loop_1
 
     ; alternative implementation without looping
     ; ora w_var001
@@ -505,16 +504,17 @@ DMAInit: ; args (a_bank, a_address, b_dest, b_dest_offset, length, format, chann
     ; ora w_var001
     ; sta DASxH_mirror
 
-    ldx v_arg003
-    ldy #0
+  + ldx v_arg003
     lda v_arg004
     sta registers, x
     lda v_arg003
     sta (BBADx_mirror), y
     lda v_arg002
-    sta (A1TxL_mirror), y ; + A1TxH
+    sta (A1TxL_mirror), y 
+    a8
     lda v_arg001
-    sta (A1Bx_mirror), y
+    sta (A1Bx_mirror),  y
+    a16
     lda v_arg005
     sta (DASxL_mirror), y 
 
@@ -531,21 +531,86 @@ DMAInit: ; args (a_bank, a_address, b_dest, b_dest_offset, length, format, chann
     sta (DMAPx_mirror), y
     pla
     tay
-    sec
+    lda #1
+    cpy #0
+    beq +
     .loop_2: 
     ror
     dey
     cpy #0
     bne .loop_2
-    sta MDMAEN 
+  + sta MDMAEN 
 
     pla 
-    plx 
     ply
+    plx
     plp
     rts
 
-HDMAInit:
+HDMAInit: ; args (source_bank, source_address, dest, indirect_bank, indirect_address, channel, format, (bool)direction)
+    php
+    pha
+    phx
+    phy
+
+    a8
+    stz DMAPx
+    lda #DMAPx
+    tcd 
+    lda v_arg007
+    ror
+    ror
+    ror
+    ror
+    cmp HDMAx_mirror
+    beq +
+    sta local_var001
+    a16
+
+    .loop_1:
+    lda #DMAPx, x
+    ora local_var001
+    sta HDMAx_mirror, x
+    inx
+    inx
+    cpx #22
+    bne .loop_1
+
+  + lda v_arg003
+    sta (hBBADx_mirror), y
+    lda v_arg002
+    sta (hA1TxL_mirror), y
+    a8
+    lda v_arg001
+    sta (hA1Bx_mirror),  y 
+    a16
+    lda v_arg005
+    cmp #0
+    beq +
+
+  + lda v_arg008
+    ror
+    ror
+    ora (hDMAPx_mirror), y
+    ora v_arg007
+    sta (hDMAPx_mirror), y
+
+    ldy v_arg006
+    lda #1
+    cpy #0
+    beq +
+    .loop_2: 
+    ror
+    dey
+    cpy #0
+    bne .loop_2
+  + sta HDMAEN
+
+    ply
+    plx
+    pla 
+    plp
+    rts
 
 ConvertBinDec:
 
@@ -636,7 +701,7 @@ m_Clamp: ; args (value, clamp_min, clamp_max)
     pla 
     plp
 
-m_PowerOf ; args (base, exponent)
+m_PowerOf: ; args (base, exponent)
     php
     pha
     phx
@@ -672,7 +737,41 @@ m_PowerOf ; args (base, exponent)
     plp
     rts
 
+m_Min: ; args (value, min)
+    php
+    pha
+    phx
+    phy
 
+    ply 
+    plx
+    pla 
+    plp
+    rts
+
+m_Max: ; args (value, max)
+    php
+    pha
+    phx
+    phy
+
+    ply 
+    plx
+    pla 
+    plp
+    rts
+
+m_Log: ; args (base, logarithm)
+    php
+    pha
+    phx
+    phy
+
+    ply 
+    plx
+    pla 
+    plp
+    rts
 
     ; lda v_arg002
     ; sta TILE_RENDER_QUEUE_POS
@@ -707,7 +806,12 @@ m_PowerOf ; args (base, exponent)
     ; ror
     ; ror 
     ; ror
-
     ; iny
     ; phy
+    ; iny
+    
+    ; lda #DMAPx, x
+    ; ora w_var001
+    ; sta DMAPx_mirror, y
+    ; iny
     ; iny
