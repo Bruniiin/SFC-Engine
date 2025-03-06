@@ -164,53 +164,86 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     ldy #0
 
     ; object_id_offset = object_id * obj_header_size;
-    ; *object = object_list[object_id * obj_header_size];
-    ; object_size = object_list[(object_id * obj_header_size)+1];
-    ; object_frames = object_list[(object_id * obj_header_size)+2];
+    ; *object = object_list[object_id_offset];
+    ; object_size = object_list[(object_id_offset)+1];
+    ; object_frames = object_list[(object_id_offset)+2];
     ; for (i = 0; i < object_size * 2; i++) {
-        ; object_offset = *object[i + (anim_state * object_size)];
+        ; object_offset = *object[i + (object_size * anim_state)];
             ; i++;
-        ; obj_id = *object[i + (anim_state * object_size)];
+        ; obj_graph = *object[i + (object_size * anim_state)];
         ; screen_x = global_x (ex.250) - camera_x (ex.200) + ((object_offset & 0x0F) * 8);
         ; screen_y = global_y - camera_y + ((object_offset & 0xF0 >> 4) * 8);
         ; if (screen_x < screen_width && screen_y < screen_height) 
         ; {
-            ;   OAMDATA(screen_x, screen_y, obj_id, obj_attributes);
+            ;   OAMDATA(screen_x, screen_y, obj_graph, obj_attributes);
         ; }
     ; }
 
+    ; simplified code
+
+    ; *object[] = object_ptr; 
+    ; object_size = *object[];
+    ; j = (object_size * anim_state);
+    ; ++j;
+    ; for (i = j; i < object_size * 2; i++) {
+          ; ++j;
+          ; object_offset = *object[i];
+          ; obj_graph = *object[j];
+          ; screen_x = global_x (ex.250) - camera_x (ex.200) + ((object_offset & 0x0F << 4) * 8);
+          ; screen_y = global_y - camera_y + ((object_offset & 0xF0) * 8);
+          ; if (screen_x < screen_width && screen_y < screen_height) 
+          ; {
+              ;   OAMDATA(screen_x, screen_y, obj_graph, obj_attributes);
+          ; }
+    ; }
+
+    a8
     ldx v_arg001
     lda object_id, x
     sta $0
     inx
     txa
 
-    lda object_id, x
+    lda ($0), y
     asl
     sta object_size
-    inx
-    lda object_id, x
+    iny
+    lda ($0), y
     sta object_frames
 
-    ldx oam_buffer_offset
+    ; lda object_id, x
+    ; asl
+    ; sta object_size
+    ; inx
+    ; lda object_id, x
+    ; sta object_frames
+
+    lda object_size
+    sta v_arg_multiplicand
     lda v_arg002
     beq +
-    sta v_arg_multiplicand
-    lda object_size
     sta v_arg_multiplier
     jsr v_Multiply
     lda mpy_value
   + tay
+    iny
+    iny
+    ldx oam_buffer_offset
 
     .loop:
+    a16
     lda ($0), y
+    ; xba
+    ; pha
+    ; xba
     pha
     and #%00001111
+    beq +
     asl 
     asl
     asl
     asl
-    adc v_arg004
+  + adc v_arg004
     sec
     sbc v_arg006
     bmi +
@@ -228,6 +261,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     cmp screen_height
     bcs + 
     iny
+    a8
 
     lda local_screen_x
     sta OAM_BUFFER, x
@@ -437,7 +471,6 @@ CheckCollisionObj:
 CheckCollisionBtoObj:
 
 InitObject: ; args (object_ptr, global_x, global_y, flags, (bool)world_space)
-
 
 GetInput:
     php
