@@ -6,6 +6,7 @@ RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
     pha
     phx
     phy
+
     ldx #0
     ldy #0
     stz local_width
@@ -97,6 +98,7 @@ RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     pha
     phx
     phy
+
     ldx #0
     ldy #0
     lda v_arg001 
@@ -157,6 +159,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     pha
     phx
     phy
+
     ldx #0
     ldy #0
 
@@ -254,8 +257,8 @@ RenderUi: ; args (object_id, anim_state, x, y, obj_attributes)
     pha
     phx
     phy
-    ldy #0
 
+    ldy #0
     ldx v_arg001
     lda object_list, x
     sta $0
@@ -340,7 +343,7 @@ SetCameraPos: ; args (x, y, bg_layer)
     phx
     phy
     ldx #0
-
+    
     lda v_arg001
     pha
     ldx v_arg003
@@ -427,14 +430,14 @@ UpdateScroll:
     plp
     rts
 
-
-CheckCollisionW:
+CheckCollisionB:
 
 CheckCollisionObj:
 
-CheckCollisionWtoObj:
+CheckCollisionBtoObj:
 
-InitializeObject:
+InitObject: ; args (object_ptr, global_x, global_y, flags, (bool)world_space)
+
 
 GetInput:
     php

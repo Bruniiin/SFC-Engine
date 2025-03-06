@@ -28,7 +28,7 @@ v_loop002 .res 1
 v_loop003 .res 1
 v_loop004 .res 1
 v_loop005 .res 1
-ret_value .res 2
+ret_value .res 4
 w_var001 .res 1 
-global_x .res 1
-global_y .res 1
+global_x .res 2
+global_y .res 2

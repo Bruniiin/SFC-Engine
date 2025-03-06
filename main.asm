@@ -135,6 +135,10 @@ Main:
     lda INIDISP
     and #$8F
     sta INIDISP
+    lda NMITIMEN
+    ora #$81
+    sta NMITIMEN
+    
 .ifdef using_test_mode
     a16
     lda boot_title
