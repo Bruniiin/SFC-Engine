@@ -23,12 +23,14 @@ RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
     sta local_obj_height
 
     ; *tilemap = &address;
-    ; j = local_obj_width * obj_y + obj_x;
-    ; k = screen_width / 2 * y + x;
+    ; obj_width = *tilemap[0];
+    ; obj_height = *tilemap[1];
+    ; j = local_obj_width * obj_y + obj_x + header;
+    ; k = (screen_width / 2 * y) + x;
     ; for (i = 0; i < width*height; i++) {
-        ; TILE_RENDER_QUEUE[k] = *tilemap[j]
+        ; TILE_RENDER_QUEUE[k] = *tilemap[j];
         ; local_width++;
-        ; if (l_width == width) {
+        ; if (local_width == width) {
             ; local_height++; 
                 ; if (local_height == height) {
                 ;       break;
@@ -111,9 +113,9 @@ RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     ; k = (screen_width/2 * y) + x; 
     ; for (i = 0; i < max_size; i++)
     ; {  
-    ;   TILE_RENDER_QUEUE[k] = address[j + char_offset];
+    ;   TILE_RENDER_QUEUE[k] = *address[j + char_offset];
     ;   char_offset++;
-    ;   if (address[j + char_offset] == %) {
+    ;   if (*address[j + char_offset] == %) {
     ;       break;
     ;       }
     ; }
@@ -145,7 +147,7 @@ RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     iny
     inx
     inc local_var001
-    cmp v_arg006
+    cmp v_arg006  
     bne .loop
     .break:
     ply
@@ -210,13 +212,6 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     iny
     lda ($0), y
     sta object_frames
-
-    ; lda object_id, x
-    ; asl
-    ; sta object_size
-    ; inx
-    ; lda object_id, x
-    ; sta object_frames
 
     lda object_size
     sta v_arg_multiplicand
@@ -283,7 +278,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     ply
     plx
     pla
-    plp
+    plp 
     rts
 
 RenderUi: ; args (object_id, anim_state, x, y, obj_attributes)
@@ -341,7 +336,7 @@ RenderUi: ; args (object_id, anim_state, x, y, obj_attributes)
     plp
     rts
 
-PlayObjAnim:
+RunAnim:
 
 ChangeScreenMode: ; args (bg_mode, bg3_priority, (bool)bg1_sprite_size, (bool)bg2_sprite_size, (bool)bg3_sprite_size, (bool), bg4_sprite_size)
     php
@@ -365,7 +360,6 @@ ChangeScreenMode: ; args (bg_mode, bg3_priority, (bool)bg1_sprite_size, (bool)bg
     pla
     plp
     rts
-
 
 FadeIn: 
 
@@ -425,6 +419,155 @@ SetCameraPos: ; args (x, y, bg_layer)
     plp
     rts
 
+CheckCollisionObj: ; args (obj_1, obj_2, (bool)auto)
+    php
+    pha
+    phx
+    phy
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
+CheckCollisionMapToObj: ; args (obj, bg_layer)
+    php
+    pha
+    phx
+    phy
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
+CheckCollisionMap:
+    php
+    pha
+    phx
+    phy
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
+InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)world_space)
+    php
+    pha
+    phx
+    phy
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
+; Low-level internal functions
+
+GetInput:
+    php
+    pha
+
+    a8
+    lda NMITIMEN
+    ora #$81
+    sta NMITIMEN
+  - lda HVBJOY
+    and #$01
+    beq - 
+    a16
+    lda JOY1L
+    sta input_lo
+
+    pla
+    plp
+    rts 
+
+UpdateInput:
+
+UpdateCollision: ; code is a bit unpolished, had a massive brain fog while writing this
+    php
+    pha
+    phx
+    phy
+    ldx #0
+    ldy #1
+
+    ; for (i = 0; i < obj_size; i++) {
+    ;   object_active_col[i] = false; 
+    ; }
+    ; for (i = 0; i < obj_size; i++) {
+    ;   for (j = 1; j < obj_size; j++) {
+    ;       hor = object_active_hor[i] - object_active_hor[j]; 
+    ;       if (hor <= object_active_width[j]) {
+    ;           ver = object_active_ver[i] - object_active_ver[j];            
+    ;           if (ver <= object_active_height[j]) {
+    ;               object_active_col[i] = j;
+    ;          }
+    ;       }
+    ;    }
+    ; } 
+
+    .loop_1:
+    lda #0 
+    sta OBJ_ACTIVE_COL, x
+    inx
+    cmp Obj_Size
+    bne .loop_1
+
+    lda Obj_Size
+    asl
+    sta local_var001
+    a16
+    .loop_2:
+    lda OBJ_ACTIVE_STATE, x
+    and #$01
+    cmp Collision_Enable_Flag
+    bne +
+    lda OBJ_ACTIVE_HOR, x
+    sec 
+    sbc OBJ_ACTIVE_HOR, y 
+    cmp OBJ_ACTIVE_WIDTH, y 
+    bne +
+    lda OBJ_ACTIVE_VER, x
+    sec
+    sbc OBJ_ACTIVE_HOR, y
+    cmp OBJ_ACTIVE_HEIGHT, y
+    bne +
+    a8
+    lda OBJ_ACTIVE, y 
+    sta OBJ_ACTIVE_COL, x
+    a16
+  + inx
+    inx 
+    iny
+    iny
+    cpx local_var001
+    bne .loop_2
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
+PushDataToScreen:
+    php
+    pha
+    phx
+    phy
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
 UpdateScroll: 
     php
     pha
@@ -463,34 +606,6 @@ UpdateScroll:
     ply
     plp
     rts
-
-CheckCollisionB:
-
-CheckCollisionObj:
-
-CheckCollisionBtoObj:
-
-InitObject: ; args (object_ptr, global_x, global_y, flags, (bool)world_space)
-
-GetInput:
-    php
-    pha
-
-    lda NMITIMEN
-    ora #$81
-    sta NMITIMEN
-  - lda HVBJOY
-    and #$01
-    beq - 
-    a16
-    lda JOY1L
-    sta input_lo
-
-    pla
-    plp
-    rts 
-
-UpdateInput:
 
 DMAInit: ; args (source_bank, source_address, dest, dest_offset, length, format, channel, (bool)direction, (bool)auto)
     php
@@ -648,7 +763,7 @@ HDMAInit: ; args (source_bank, source_address, dest, indirect_bank, indirect_add
     plp
     rts
 
-ConvertBinDec:
+ConvertToDecimal:
 
 ; Math (A few math functions. I like writing math functions so i'll add many more of them.)
 
@@ -851,3 +966,10 @@ m_Log: ; args (base, logarithm)
     ; sta DMAPx_mirror, y
     ; iny
     ; iny
+
+    ; lda object_id, x
+    ; asl
+    ; sta object_size
+    ; inx
+    ; lda object_id, x
+    ; sta object_frames
