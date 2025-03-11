@@ -461,6 +461,31 @@ InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)world_sp
     phx
     phy
 
+    ; i = (OBJECT_ACTIVE_SIZE << 1);
+    ; global_x = (global_x % (world_space * screen_width));
+    ; global_y = (global_y % (world_space * screen_width));
+    ; OBJECT_ACTIVE_POINTER [i] = object_ptr;
+    ; OBJECT_ACTIVE_STATE   [i] = flags; 
+    ; OBJECT_ACTIVE_HOR     [i] = global_x;
+    ; OBJECT_ACTIVE_VER     [i] = global_y;
+    ; *object_ptr = &object_ptr; 
+    ; elements = *object_ptr[]; 
+    ; for (j = 0, k = 1; j < elements; j++, k++) {
+    ;   OBJECT_ALLOC[j] = *object_ptr[k]; 
+    ; }
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
+DeallocateObject: 
+    php
+    pha
+    phx
+    phy
+
     ply
     plx
     pla 
@@ -490,7 +515,7 @@ GetInput:
 
 UpdateInput:
 
-UpdateCollision: ; code is a bit unpolished, had a massive brain fog while writing this
+UpdateCollision: 
     php
     pha
     phx
@@ -499,15 +524,14 @@ UpdateCollision: ; code is a bit unpolished, had a massive brain fog while writi
     ldy #1
 
     ; for (i = 0; i < obj_size; i++) {
-    ;   object_active_col[i] = false; 
-    ; }
-    ; for (i = 0; i < obj_size; i++) {
+    ;   object_active_collision[i] = false; 
     ;   for (j = 1; j < obj_size; j++) {
     ;       hor = object_active_hor[i] - object_active_hor[j]; 
     ;       if (hor <= object_active_width[j]) {
     ;           ver = object_active_ver[i] - object_active_ver[j];            
     ;           if (ver <= object_active_height[j]) {
-    ;               object_active_col[i] = j;
+    ;               object_active_collision[i] = j;
+    ;               break;
     ;          }
     ;       }
     ;    }
@@ -540,8 +564,10 @@ UpdateCollision: ; code is a bit unpolished, had a massive brain fog while writi
     cmp OBJ_ACTIVE_HEIGHT, y
     bne +
     a8
-    lda OBJ_ACTIVE, y 
+    tya 
     sta OBJ_ACTIVE_COL, x
+    txa
+    sta OBJ_ACTIVE_COL, y
     a16
   + inx
     inx 
