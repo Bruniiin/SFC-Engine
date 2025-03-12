@@ -129,16 +129,41 @@ Main:
 
 .MACRO InitEngine
     php
+    a8
     lda #0
     sta v_arg001
     jsr ClearScreen
     lda INIDISP
-    and #$8F
+    and #$0F
     sta INIDISP
     lda NMITIMEN
     ora #$81
     sta NMITIMEN
-    
+    lda #%00000111
+    sta BG1SC
+    pha
+    lda #%00010111
+    sta BG2SC
+    inc a
+    sta BG3SC
+    lda #%00100111
+    sta BG4SC
+    a16
+    lsr 
+    lsr
+    sta w_var001
+    lda (w_var001 << 11)
+    sta vram_tm_001
+    lda (w_var001 + 1 << 11)
+    sta vram_tm_002
+    lda (w_var001 + 2 << 11)
+    sta vram_tm_003
+    lda (w_var001 + 3 << 11)
+    sta vram_tm_004 
+    lda INIDISP
+    and #$8F
+    sta INIDISP
+
 .ifdef using_test_mode
     a16
     lda boot_title
@@ -178,6 +203,7 @@ Main:
     sta $09
     pla 
     sta $08
+
     ; if (input_hi & 0x08 | BUTTON_DOWN) {
     ; pointer_y += pointer_y_offset;
     ; pointer++; }
@@ -230,6 +256,8 @@ Main:
 
 engine_wait: 
     stz vblanking_done
+    lda #1
+    sta vblank_wait
 engine_wait_loop:
     lda vblanking_done
     beq engine_wait_loop
