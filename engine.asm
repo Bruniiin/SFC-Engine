@@ -22,7 +22,7 @@ RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
     lda ($4), y
     sta local_obj_height
 
-    ; *tilemap = &address;
+    ; *tilemap = &address;  
     ; obj_width = *tilemap[0];
     ; obj_height = *tilemap[1];
     ; j = local_obj_width * obj_y + obj_x + header;
@@ -185,10 +185,8 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
 
     ; *object[] = object_ptr; 
     ; object_size = *object[];
-    ; j = (object_size * anim_state);
-    ; ++j;
-    ; for (i = j; i < object_size * 2; i++) {
-          ; ++j;
+    ; j = (anim_state * object_size) + 1;
+    ; for (i = 1, j; i < object_size * 2; i++, j++) {
           ; object_offset = *object[i];
           ; obj_graph = *object[j];
           ; screen_x = global_x (ex.250) - camera_x (ex.200) + ((object_offset & 0x0F << 4) * 8);
@@ -228,9 +226,9 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     .loop:
     a16
     lda ($0), y
-    ; xba
-    ; pha
-    ; xba
+   ; xba
+   ; pha
+   ; xba
     pha
     and #%00001111
     beq +
@@ -281,7 +279,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     plp 
     rts
 
-RenderUi: ; args (object_id, anim_state, x, y, obj_attributes)
+RenderUi: ; args (object_id, anim_state, x, y, attributes)
     php
     pha
     phx
@@ -298,7 +296,7 @@ RenderUi: ; args (object_id, anim_state, x, y, obj_attributes)
     sta v_arg_multiplier
     jsr vMultiply
     lda mpy_value
-    ; asl
+  ; asl
     tay
     ldx oam_buffer_offset
 
@@ -335,8 +333,6 @@ RenderUi: ; args (object_id, anim_state, x, y, obj_attributes)
     pla
     plp
     rts
-
-RunAnim:
 
 ChangeScreenMode: ; args (bg_mode, bg3_priority, (bool)bg1_sprite_size, (bool)bg2_sprite_size, (bool)bg3_sprite_size, (bool), bg4_sprite_size)
     php
@@ -419,11 +415,13 @@ SetCameraPos: ; args (x, y, bg_layer)
     plp
     rts
 
-CheckCollisionObj: ; args (obj_1, obj_2, (bool)auto)
+CheckCollisionObj: 
     php
     pha
     phx
     phy
+
+    ; return (object_active_collision[obj_1 * 2]);
 
     ply
     plx
@@ -431,11 +429,22 @@ CheckCollisionObj: ; args (obj_1, obj_2, (bool)auto)
     plp
     rts
 
-CheckCollisionMapToObj: ; args (obj, bg_layer)
+CheckCollisionMapToObj: ; args (obj_id, bg_layer)
     php
     pha
     phx
     phy
+
+    ; int address = current_scene + bg_layer * 2;
+    ; *map_pointer = scene_map_ptr[address];
+    ; int map_width = *map_pointer[];
+    ; int x = obj_active_hor[obj_id*2];
+    ; int y = obj_active_ver[obj_id*2];
+    ; x = x / tile_size;
+    ; y = y / tile_size;
+    ; int pos = y * map_width + x;
+    ; int col = *scene_pointer[pos];
+    ; return col;
 
     ply
     plx
@@ -455,24 +464,52 @@ CheckCollisionMap:
     plp
     rts
 
-InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)world_space)
+InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)screen_space)
     php
     pha
     phx
     phy
 
-    ; i = (OBJECT_ACTIVE_SIZE << 1);
-    ; global_x = (global_x % (world_space * screen_width));
-    ; global_y = (global_y % (world_space * screen_width));
-    ; OBJECT_ACTIVE_POINTER [i] = object_ptr;
-    ; OBJECT_ACTIVE_STATE   [i] = flags; 
-    ; OBJECT_ACTIVE_HOR     [i] = global_x;
-    ; OBJECT_ACTIVE_VER     [i] = global_y;
-    ; *object_ptr = &object_ptr; 
-    ; elements = *object_ptr[]; 
-    ; for (j = 0, k = 1; j < elements; j++, k++) {
-    ;   OBJECT_ALLOC[j] = *object_ptr[k]; 
+    ; a few implementations, not sure the best way to implement it yet
+
+    ; *object_ptr[] = &object_ptr; 
+    ; sizeof = *object_ptr[];
+    ; for (int i = 0, int j = 0; j < sizeof; i++, j++) {
+    ;   OBJ_DATA[i] = *object_ptr[j]; 
     ; }
+    ; int i = (OBJECT_ACTIVE_SIZE << 1);
+    ; OBJ_ACTIVE_POINTER[i] = object_ptr + (obj_elements << 1);
+    ; OBJ_ACTIVE_FLAGS[i] = flags; 
+    ; OBJ_ACTIVE_HOR[i] = (global_x / (screen_space * screen_width));
+    ; OBJ_ACTIVE_VER[i] = (global_y / (screen_space * screen_height));
+
+
+    ; i, k = (object_active_sizeof << 1);
+    ; OBJ_ACTIVE[i++] = (sizeof(&object_ptr) << 1);
+    ; OBJ_ACTIVE[i++] = object_ptr; 
+    ; OBJ_ACTIVE[i++] = (global_x / (screen_space * screen_width));
+    ; OBJ_ACTIVE[i++] = (global_y / (screen_space * screen_height));
+    ; OBJ_ACTIVE[i++] = flags; 
+    ; *object_ptr = &object_ptr;
+    ; for (i, int j = 0; j < sizeof(&object_ptr); i++, j++) {
+    ;   OBJ_ACTIVE[i] = *object_ptr[j]; 
+    ; } 
+    ; object_active_sizeof = i;
+
+
+    ; int i = (obj_active_sizeof << 1);
+    ; OBJ_POINTER[i] = object_ptr; 
+    ; int i = (obj_active_sizeof * 24);
+    ; OBJ_DATA[i++] = (sizeof(&object_ptr) << 1);
+    ; OBJ_DATA[i++] = (global_x / (screen_space * screen_width));
+    ; OBJ_DATA[i++] = (global_y / (screen_space * screen_height));
+    ; OBJ_DATA[i++] = flags; 
+    ; *object_ptr = &object_ptr;
+    ; for (i, int j = 0; j < sizeof(&object_ptr); i++, j++) {
+    ;   OBJ_DATA[i] = *object_ptr[j]; 
+    ; } 
+    ; object_active_sizeof = i;
+    ; sizeof = *object_ptr[];
 
     ply
     plx
@@ -480,11 +517,21 @@ InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)world_sp
     plp
     rts
 
-DeallocateObject: 
+DeallocateObject: ; args ()
     php
     pha
     phx
     phy
+
+    ; i = (object_id * 2);
+    ; OBJ_ACTIVE_POINTER[i] = 0x0000; 
+    ; OBJ_ACTIVE_FLAGS[i] = 0x0000; 
+    ; OBJ_ACTIVE_HOR[i] = 0x0000;
+    ; OBJ_ACTIVE_VER[i] = 0x0000;
+    ; sizeof = OBJ_DATA[i * struct_size];
+    ; for (i = 0; i < sizeof; i++) {
+    ; OBJ_DATA[i] = 0x0000;
+    ; }
 
     ply
     plx
@@ -523,15 +570,16 @@ UpdateCollision:
     ldx #0
     ldy #1
 
-    ; for (i = 0; i < obj_size; i++) {
-    ;   object_active_collision[i] = false; 
-    ;   for (j = 1; j < obj_size; j++) {
-    ;       hor = object_active_hor[i] - object_active_hor[j]; 
-    ;       if (hor <= object_active_width[j]) {
-    ;           ver = object_active_ver[i] - object_active_ver[j];            
-    ;           if (ver <= object_active_height[j]) {
-    ;               object_active_collision[i] = j;
-    ;               break;
+    ; for (i = 0; i < obj_active_size * 4; i++) {
+    ;   obj_active_collision = 0xff; 
+    ; }
+    ; for (i = 0; i < obj_active_size * 4; i += 4) {
+    ;   for (j = 1, k = 0; j < obj_active_size, k < obj_collision_limit; j++, k++) {
+    ;       hor = obj_active_hor[i] - obj_active_hor[j]; 
+    ;       if (hor <= obj_active_width[j]) {
+    ;           ver = obj_active_ver[i] - obj_active_ver[j];            
+    ;           if (ver <= obj_active_height[j]) {
+    ;               obj_active_collision[i + k] = j;
     ;          }
     ;       }
     ;    }
@@ -582,11 +630,66 @@ UpdateCollision:
     plp
     rts
 
-PushDataToScreen:
+PushVRAMDataToScreen:
     php
     pha
     phx
     phy
+
+    ; *bg_size = &bgsc_mirror;
+    ; source = &TILE_RENDER_QUEUE;
+    ; source_bank = 0x7e;
+    ; dest = VMDATAL; 
+    ; dest_offset = vram_tm_001;
+    ; format = 0x01;
+    ; for (i = 0; i < layers; i++) 
+    ; { 
+    ;   bg_size = *bg_size[i] ^ 0x03; 
+    ;   length = ((32 * 32 * bg_size) * layers); 
+    ;   DMAInit(source_bank, source, dest, dest_offset, length, format, i, 0, 1); 
+    ; }
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
+PushOAMDataToScreen: 
+    php
+    pha
+    phx
+    phy
+
+    ; source = &OAMDATA;
+    ; source_bank = 0x7e;
+    ; dest = OAMDATA;
+    ; dest_offset = 0x0000;
+    ; length = oamdata_size; 
+    ; format = 0x00;
+    ; DMAInit(source_bank, source, dest, dest_offset, length, format, 8, 0, 1); 
+
+    ply
+    plx
+    pla 
+    plp
+    rts
+
+RenderScreenObjects: 
+    php
+    pha
+    phx
+    phy
+
+    ; for (i = 0, j = 0; i < obj_active_sizeof; i++, j += 2)
+    ; {
+    ;   *object = OBJ_ACTIVE_POINTER[j]; 
+    ;   x = OBJ_ACTIVE_HOR[j]; 
+    ;   y = OBJ_ACTIVE_HOR[j];
+    ;   anim = OBJ_ACTIVE_FRAME[i];
+    ;   attributes = OBJ_ACTIVE_FLAGS[i];
+    ;   RenderObject(*object, anim, attributes, x, y, camera_x, camera_y);
+    ; }
 
     ply
     plx
@@ -630,6 +733,18 @@ UpdateScroll:
     pla
     plx 
     ply
+    plp
+    rts
+
+ObjAnim:
+    php
+    pha
+    phx
+    phy
+
+    ply
+    plx
+    pla
     plp
     rts
 
@@ -708,6 +823,7 @@ DMAInit: ; args (source_bank, source_address, dest, dest_offset, length, format,
     sta (DMAPx_mirror), y
     pla
     tay
+    phy
     lda #1
     cpy #0
     beq +
@@ -716,7 +832,8 @@ DMAInit: ; args (source_bank, source_address, dest, dest_offset, length, format,
     dey
     cpy #0
     bne .loop_2
-  + sta MDMAEN 
+    ply
+  + sta (HDMAEN_mirror), y
 
     pla 
     ply
@@ -773,6 +890,7 @@ HDMAInit: ; args (source_bank, source_address, dest, indirect_bank, indirect_add
     sta (hDMAPx_mirror), y
 
     ldy v_arg006
+    phy
     lda #1
     cpy #0
     beq +
@@ -781,7 +899,8 @@ HDMAInit: ; args (source_bank, source_address, dest, indirect_bank, indirect_add
     dey
     cpy #0
     bne .loop_2
-  + sta HDMAEN
+    ply
+  + sta (HDMAEN_mirror), y
 
     ply
     plx
@@ -914,6 +1033,18 @@ m_PowerOf: ; args (base, exponent)
     plp
     rts
 
+m_Lerp: ; args (a, b, alpha)
+    php
+    pha
+    phx
+    phy
+
+    ply 
+    plx
+    pla 
+    plp
+    rts
+
 m_Min: ; args (value, min)
     php
     pha
@@ -999,3 +1130,9 @@ m_Log: ; args (base, logarithm)
     ; inx
     ; lda object_id, x
     ; sta object_frames
+
+    ;               offset++;
+    ;               if (offset >= object_collision_limit) {
+    ;                   break;
+    ;               }
+    ; offset = 0; 
