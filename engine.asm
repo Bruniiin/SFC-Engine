@@ -93,7 +93,7 @@ RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
     plx
     pla
     plp
-    rts
+    rtl
 
 RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     php
@@ -123,7 +123,7 @@ RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     sta v_arg_multiply
     lda char_size
     sta v_arg_multiplier
-    jsr vMultiply
+    jsl vMultiply
     lda mpy_value
     clc
     adc v_arg003
@@ -133,7 +133,7 @@ RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     sta v_arg_multiply
     lda v_arg005
     sta v_arg_multiplier
-    jsr vMultiply
+    jsl vMultiply
     lda mpy_value
     clc
     adc v_arg004
@@ -154,7 +154,7 @@ RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     plx
     pla
     plp
-    rts
+    rtl
 
 RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y, camera_x, camera_y, (bool)is_visible)
     php
@@ -216,7 +216,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     lda v_arg002
     beq +
     sta v_arg_multiplier
-    jsr v_Multiply
+    jsl v_Multiply
     lda mpy_value
   + tay
     iny
@@ -277,7 +277,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     plx
     pla
     plp 
-    rts
+    rtl
 
 RenderUi: ; args (object_id, anim_state, x, y, attributes)
     php
@@ -294,7 +294,7 @@ RenderUi: ; args (object_id, anim_state, x, y, attributes)
     lda ($0), y
     sta object_size
     sta v_arg_multiplier
-    jsr vMultiply
+    jsl vMultiply
     lda mpy_value
   ; asl
     tay
@@ -332,7 +332,7 @@ RenderUi: ; args (object_id, anim_state, x, y, attributes)
     plx
     pla
     plp
-    rts
+    rtl
 
 ChangeScreenMode: ; args (bg_mode, bg3_priority, (bool)bg1_sprite_size, (bool)bg2_sprite_size, (bool)bg3_sprite_size, (bool), bg4_sprite_size)
     php
@@ -355,7 +355,7 @@ ChangeScreenMode: ; args (bg_mode, bg3_priority, (bool)bg1_sprite_size, (bool)bg
     plx
     pla
     plp
-    rts
+    rtl
 
 FadeIn: 
 
@@ -413,7 +413,7 @@ SetCameraPos: ; args (x, y, bg_layer)
     plx
     pla 
     plp
-    rts
+    rtl
 
 CheckCollisionObj: 
     php
@@ -427,13 +427,14 @@ CheckCollisionObj:
     plx
     pla 
     plp
-    rts
+    rtl
 
 CheckCollisionMapToObj: ; args (obj_id, bg_layer)
     php
     pha
     phx
     phy
+    ldy #0
 
     ; int address = current_scene + bg_layer * 2;
     ; *map_pointer = scene_map_ptr[address];
@@ -443,16 +444,52 @@ CheckCollisionMapToObj: ; args (obj_id, bg_layer)
     ; x = x / tile_size;
     ; y = y / tile_size;
     ; int pos = y * map_width + x;
-    ; int col = *scene_pointer[pos];
+    ; int col = *map_pointer[pos];
     ; return col;
+
+    lda current_scene
+    clc
+    adc v_arg002
+    asl
+    tax 
+    lda scene_map_ptr, x 
+    sta $2
+    inx
+    lda scene_map_ptr, x
+    sta $4
+    lda ($0), y 
+    sta local_var001 ; map_width
+
+    lda v_arg001
+    asl
+    tax
+    lda OBJ_ACTIVE_HOR, x
+    lsr
+    lsr
+    lsr
+    sta local_var002 ; x 
+    lda OBJ_ACTIVE_VER, x
+    lsr
+    lsr
+    lsr
+    sta local_var003 ; y
+    clc
+    adc local_var002
+    sta v_arg001
+    lda local_var001
+    sta v_arg002
+    jsl m_Multiply
+    ldy mpy_value 
+    lda ($0), y
+    sta ret_value
 
     ply
     plx
     pla 
     plp
-    rts
+    rtl
 
-CheckCollisionMap:
+CheckCollisionMap: ; args (global_x, global_y, bg_layer)
     php
     pha
     phx
@@ -462,7 +499,7 @@ CheckCollisionMap:
     plx
     pla 
     plp
-    rts
+    rtl
 
 InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)screen_space)
     php
@@ -484,7 +521,7 @@ InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)screen_s
     ; OBJ_ACTIVE_VER[i] = (global_y / (screen_space * screen_height));
 
 
-    ; i, k = (object_active_sizeof << 1);
+    ; int i, k = (object_active_sizeof << 1);
     ; OBJ_ACTIVE[i++] = (sizeof(&object_ptr) << 1);
     ; OBJ_ACTIVE[i++] = object_ptr; 
     ; OBJ_ACTIVE[i++] = (global_x / (screen_space * screen_width));
@@ -511,11 +548,53 @@ InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)screen_s
     ; object_active_sizeof = i;
     ; sizeof = *object_ptr[];
 
+    lda OBJ_ACTIVE_SIZE 
+    asl
+    tay
+    lda v_arg001
+    sta $8
+    sta local_var001
+    lda v_arg002
+    sta OBJ_ACTIVE_HOR, y 
+    lda v_arg003
+    sta OBJ_ACTIVE_VER, y
+    a8
+    lda v_arg004
+    sta OBJ_ACTIVE_FLAGS, y
+    a16
+    phy
+    sty v_arg001
+    lda #20
+    sta v_arg002
+    jsl m_Multiply
+    ldx mpy_value
+    ldy #0
+    lda ($8), y
+    inc a
+    sta local_var002 
+
+    .loop: 
+    lda ($8), y
+    sta OBJ_ELEMENTS, x
+    iny
+    cpy local_var002
+    bne .loop
+
+    ply
+    lda #local_var001
+    clc
+    adc #local_var002
+    sta OBJ_ACTIVE_POINTER, y 
+    lda OBJ_ACTIVE_SIZE
+    clc
+    adc #2
+    sta OBJ_ACTIVE_SIZE
+
     ply
     plx
     pla 
     plp
-    rts
+    rtl
 
 DeallocateObject: ; args ()
     php
@@ -529,15 +608,38 @@ DeallocateObject: ; args ()
     ; OBJ_ACTIVE_HOR[i] = 0x0000;
     ; OBJ_ACTIVE_VER[i] = 0x0000;
     ; sizeof = OBJ_DATA[i * struct_size];
-    ; for (i = 0; i < sizeof; i++) {
+    ; for (i; i < sizeof; i++) {
     ; OBJ_DATA[i] = 0x0000;
     ; }
+
+    lda v_arg001
+    asl
+    tay
+    lda #0
+    sta OBJ_ACTIVE_POINTER, x
+    sta OBJ_ACTIVE_HOR, x
+    sta OBJ_ACTIVE_VER, x
+    sta OBJ_ACTIVE_FLAGS, x
+    phx
+    stx v_arg001
+    ldx #20
+    stx v_arg002
+    jsl v_Multiply
+    ldx mpy_value
+    stx local_var001
+    plx
+
+    .loop:
+    sta OBJ_DATA, x
+    inx
+    cpx local_var001
+    bne .loop
 
     ply
     plx
     pla 
     plp
-    rts
+    rtl
 
 ; Low-level internal functions
 
@@ -558,7 +660,7 @@ GetInput:
 
     pla
     plp
-    rts 
+    rtl 
 
 UpdateInput:
 
@@ -628,7 +730,7 @@ UpdateCollision:
     plx
     pla 
     plp
-    rts
+    rtl
 
 PushVRAMDataToScreen:
     php
@@ -649,11 +751,39 @@ PushVRAMDataToScreen:
     ;   DMAInit(source_bank, source, dest, dest_offset, length, format, i, 0, 1); 
     ; }
 
+    a16
+    xy8 
+    ldx #$7e
+    sta v_arg002 ; source_bank
+    lda #TILE_RENDER_QUEUE
+    sta v_arg001 ; source
+    ldx #<VMDATAL
+    sta v_arg003 ; dest
+    lda vram_tm_001
+    sta v_arg004 ; dest_offset
+    lda (32 * 32 * bg_size)
+    sta v_arg005 ; length
+    ldx #1
+    stx v_arg006 ; format 
+    dex 
+    stx v_arg007 ; channel 
+    ldy #0
+    sta v_arg008 ; direction 
+    iny
+    sta v_arg009 ; auto
+
+    .loop:
+    jsr DMAInit
+    inx
+    stx v_arg007
+    cpx #4 
+    bne .loop 
+
     ply
     plx
     pla 
     plp
-    rts
+    rtl
 
 PushOAMDataToScreen: 
     php
@@ -669,33 +799,77 @@ PushOAMDataToScreen:
     ; format = 0x00;
     ; DMAInit(source_bank, source, dest, dest_offset, length, format, 8, 0, 1); 
 
+    a16
+    xy8
+    ldx #$7e
+    stx v_arg001 ; source_bank
+    lda OAMDATA_MIRROR 
+    sta v_arg002 ; source
+    lda OAMDATA
+    sta v_arg003 ; dest 
+    lda #$0000
+    sta v_arg004 ; dest_offset
+    lda oam_size
+    sta v_arg005 ; length
+    ldx #0
+    stx v_arg006 ; format
+    ldx #8
+    stx v_arg007 ; dma channel
+    ldx #0
+    stx v_arg008 ; direction
+    inx
+    stx v_arg009 ; auto
+
+    jsr DMAInit
+
     ply
     plx
     pla 
     plp
-    rts
+    rtl
 
-RenderScreenObjects: 
+RenderActiveObjects: 
     php
     pha
     phx
     phy
+    ldx #0
+    ldy #0
 
     ; for (i = 0, j = 0; i < obj_active_sizeof; i++, j += 2)
     ; {
     ;   *object = OBJ_ACTIVE_POINTER[j]; 
     ;   x = OBJ_ACTIVE_HOR[j]; 
     ;   y = OBJ_ACTIVE_HOR[j];
-    ;   anim = OBJ_ACTIVE_FRAME[i];
+    ;   anim = OBJ_ACTIVE_ANIM[i];
     ;   attributes = OBJ_ACTIVE_FLAGS[i];
     ;   RenderObject(*object, anim, attributes, x, y, camera_x, camera_y);
     ; }
+
+    lda OBJ_ACTIVE_POINTER, y
+    sta v_arg001 
+    lda OBJ_ACTIVE_ANIM, x
+    sta v_arg002 ; anim
+    a8
+    lda OBJ_ACTIVE_FLAGS, x
+    sta v_arg003 ; attributes
+    a16
+    lda OBJ_ACTIVE_HOR, y 
+    sta v_arg004 ; x
+    lda OBJ_ACTIVE_HOR, y
+    sta v_arg005 ; y
+    lda global_cam_x
+    sta v_arg006
+    lda global_cam_y
+    sta v_arg007
+    
+    jsr RenderObject
 
     ply
     plx
     pla 
     plp
-    rts
+    rtl
 
 UpdateScroll: 
     php
@@ -734,19 +908,40 @@ UpdateScroll:
     plx 
     ply
     plp
-    rts
+    rtl
 
-ObjAnim:
+UpdateAnimations:
     php
     pha
     phx
     phy
 
+    ; for (i = 0; j = 0; i < obj_active_onscreen; i++, j += 2) {
+    ;   int address = OBJ_ACTIVE_ANIM_POINTER[j];
+    ;   int offset = address[];
+    ;   offset = offset * 10 + sizeof(offset);
+    ;   int anim_frame = address[offset];
+    ;   if (!address[offset + anim_frame] <= 0x00) { 
+    ;       address[offset + anim_frame]--; 
+    ;   }
+    ;   else {
+    ;       anim_frame++;
+    ;       OBJ_ACTIVE_ANIM[i] = animation_frame;
+    ;       animation_frame++;
+    ;       if (address[offset + anim_frame] == 0xfe) {
+    ;           address[offset] = 0x00;
+    ;       }
+    ;       else {
+    ;       address[offset] = anim_frame;
+    ;       }
+    ;   }
+    ;
+
     ply
     plx
     pla
     plp
-    rts
+    rtl
 
 DMAInit: ; args (source_bank, source_address, dest, dest_offset, length, format, channel, (bool)direction, (bool)auto)
     php
@@ -924,7 +1119,7 @@ m_Multiply: ; args (multiplicand, multiplier, (bool)m7_matrix)
     lda MPYH
     sta mpy_value_h
     plp
-    rts
+    rtl
 
 m_Divide: ; args (dividend, divisor)
     php
@@ -946,7 +1141,7 @@ m_Divide: ; args (dividend, divisor)
     lda RDMPYH
     sta div_rem_h
     plp
-    rts 
+    rtl 
 
 m_GetDirection: ; args (x1, y1, x2, y2)
     php
@@ -970,7 +1165,7 @@ m_GetDirection: ; args (x1, y1, x2, y2)
     plx
     pla 
     plp 
-    rts
+    rtl
 
 m_Clamp: ; args (value, clamp_min, clamp_max)
     php
@@ -996,6 +1191,7 @@ m_Clamp: ; args (value, clamp_min, clamp_max)
     plx
     pla 
     plp
+    rtl
 
 m_PowerOf: ; args (base, exponent)
     php
@@ -1031,7 +1227,7 @@ m_PowerOf: ; args (base, exponent)
     plx
     pla 
     plp
-    rts
+    rtl
 
 m_Lerp: ; args (a, b, alpha)
     php
@@ -1043,7 +1239,7 @@ m_Lerp: ; args (a, b, alpha)
     plx
     pla 
     plp
-    rts
+    rtl
 
 m_Min: ; args (value, min)
     php
@@ -1055,7 +1251,7 @@ m_Min: ; args (value, min)
     plx
     pla 
     plp
-    rts
+    rtl
 
 m_Max: ; args (value, max)
     php
@@ -1067,7 +1263,7 @@ m_Max: ; args (value, max)
     plx
     pla 
     plp
-    rts
+    rtl
 
 m_Log: ; args (base, logarithm)
     php
@@ -1079,7 +1275,7 @@ m_Log: ; args (base, logarithm)
     plx
     pla 
     plp
-    rts
+    rtl
 
     ; lda v_arg002
     ; sta TILE_RENDER_QUEUE_POS
