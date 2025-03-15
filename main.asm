@@ -139,16 +139,44 @@ Main:
     lda NMITIMEN
     ora #$81
     sta NMITIMEN
+    
+    lda #%01000100
+    sta BG12BA
+    pha
+    and #%00001111
+    sta w_var001
+    pla
+    and #%11110000
+    sta w_var002
+    lda (w_var001 << 13)
+    sta vram_chr_001
+    lda (w_var002 << 13)
+    sta vram_chr_002
+
+    lda #%01010101
+    sta BG34BA
+    pha
+    and #%00001111
+    sta w_var001
+    pla
+    and #%11110000
+    sta w_var002
+    lda (w_var001 << 13)
+    sta vram_chr_001
+    lda (w_var002 << 13)
+    sta vram_chr_002
+
     lda #%00000111
     sta BG1SC
     pha
-    lda #%00010111
+    inc a
     sta BG2SC
     inc a
     sta BG3SC
-    lda #%00100111
+    inc a
     sta BG4SC
     a16
+    pla 
     lsr 
     lsr
     sta w_var001
@@ -160,6 +188,7 @@ Main:
     sta vram_tm_003
     lda (w_var001 + 3 << 11)
     sta vram_tm_004 
+
     lda INIDISP
     and #$8F
     sta INIDISP
