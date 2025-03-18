@@ -33,23 +33,29 @@ NMI: ; internal to engine, not meant to be modified
     sta BGMODE
     and #$0F
     cmp #7
-    beq m7_handler ; branches to execute Mode 7 related code
+    beq mode_7_handler ; branches to execute Mode 7 related code
     bra +
+    mode_7_handler:
 
-  + jsr PushDataToVRAM
-    jsr PushDataToCGRAM
-    jsr PushVRAMDataToScreen
-    jsr PushOAMDataToScreen 
-    jsr HandleDMARequests
-    jsr HandleHDMARequests
-    jsr UpdateScroll
-    lda INIDISP
+  + jsl PushDataToVRAM
+    jsl PushDataToCGRAM
+    jsl PushVRAMDataToScreen
+    jsl PushOAMDataToScreen
+    jsl HandleDMARequests
+    jsl HandleHDMARequests
+    lda auto_update_objects
+    beq +
+    jsl UpdateObjectGfx
+    jsl RenderActiveObjects
+  + lda auto_update_screen
+    beq + 
+    jsl UpdateScrolling
+    jsl UpdateSeam  
+  + lda INIDISP
     eor #%10000000 ; disables force-blanking as graphic updates are done
     sta INIDISP
-    jsr UpdateCollisions
-    jsr GetInput
-    jsr UpdateInput
-    jsr UpdateAudio     
+    jsl UpdateCollisions
+    jsl GetInput     
     skip_frame:
     lda #1
     sta vblanking_done
@@ -59,8 +65,6 @@ NMI: ; internal to engine, not meant to be modified
     pla
     plb
     rti
-
-
 
 IRQ: 
     phb
@@ -77,6 +81,21 @@ IRQ:
     pla
     plb
     rti
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     ; lda irq_select
     ; asl

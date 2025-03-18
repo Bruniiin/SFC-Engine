@@ -1,26 +1,29 @@
 .bank $F0
 .org $8000
 
-RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
+RenderScreen: ; args (address_ptr, x, y, obj_x, obj_y, width, height)
     php
     pha
     phx
     phy
-
     ldx #0
     ldy #0
-    stz local_width
-    stz local_height
+.
+
     lda v_arg001
-    asl
-    tax
-    lda tile_list, x
+  ; asl
+  ; tax
     sta $4
+    a8 
     lda ($4), y
-    sta local_obj_width
+    sta local_var001 ; map width
     iny
     lda ($4), y
-    sta local_obj_height
+    sta local_var002 ; map height
+    stz width_count
+    stz height_count
+    lsr v_arg006 
+    a16
 
     ; *tilemap = &address;  
     ; obj_width = *tilemap[0];
@@ -40,20 +43,21 @@ RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
             ; k += screen_width / 2 - width;
             ; }
     ; }
-    lda local_obj_width
-    sta WRMPYA
+
+    lda local_var001
+    sta M7A
     lda v_arg005
-    sta WRMPYB
+    sta M7B
     nop
     lda MPYL
     clc
     adc v_arg004
     tay
 
-    lda screen_width/2
-    sta WRMPYA
+    lda #(screen_width / 2)
+    sta M7A
     lda v_arg003
-    sta WRMPYB
+    sta M7B
     nop 
     lda MPYL
     clc
@@ -64,28 +68,30 @@ RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
     lda ($4), y
     sta TILE_RENDER_QUEUE, x
     iny
+    iny 
     inx
-    inc local_width
+    inx 
+    inc width_count 
     cmp v_arg006
     bne .loop
 
-    stz local_width
+    stz width_count
     
     txa
-    sec 
-    adc #screen_width/2
     clc 
+    adc #(screen_width / 2)
+    sec 
     sbc v_arg006
     tax
 
     tya
-    sec
-    adc local_obj_width
     clc
+    adc local_var001
+    sec
     sbc v_arg006
     tay 
 
-    inc local_height
+    inc height_count
     cmp v_arg007
     bne .loop
     
@@ -95,18 +101,22 @@ RenderScreen: ; args (address, x, y, obj_x, obj_y, width, height)
     plp
     rtl
 
-RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
+RenderString: ; args (address_ptr, char_offset, x, y, max_size)
     php
     pha
     phx
     phy
 
+    a16
     ldx #0
     ldy #0
     lda v_arg001 
+    clc
+    adc v_arg002
+    sta $2
+    lda v_arg001+2
     sta $4
-    lda #0
-    sta local_var001 ; size iterator
+    stz local_var001 ; size iterator
 
     ; *address = &address;
     ; j = address + (string_offset * 20);
@@ -117,37 +127,39 @@ RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     ;   char_offset++;
     ;   if (*address[j + char_offset] == %) {
     ;       break;
-    ;       }
+    ;   }
     ; }
-    lda v_arg002
-    sta v_arg_multiply
-    lda char_size
-    sta v_arg_multiplier
-    jsl vMultiply
-    lda mpy_value
+
+    ; *address = &address;
+    ; j = (screen_width * y) + x; 
+    ; for (i = 0, j; i < max_size; i++, j++)
+    ; {  
+    ;   TILE_RENDER_QUEUE[j] = *address[i];
+    ;   if (*address[i] == %) {
+    ;       break;
+    ;   }
+    ; }
+
+    lda #screen_width
+    sta M7A
+    lda v_arg004
+    sta M7B 
+    lda MPYL
     clc
     adc v_arg003
-    tay
-
-    lda screen_width/2
-    sta v_arg_multiply
-    lda v_arg005
-    sta v_arg_multiplier
-    jsl vMultiply
-    lda mpy_value
-    clc
-    adc v_arg004
     tax
+    ldy #0
+    a8 
 
     .loop:
-    lda ($4), y
+    lda ($2), y
     cmp #%
     beq .break
     sta TILE_RENDER_QUEUE, x
     iny
     inx
     inc local_var001
-    cmp v_arg006  
+    cmp v_arg005 
     bne .loop
     .break:
     ply
@@ -156,12 +168,11 @@ RenderString: ; args (address, string_offset, char_offset, x, y, max_size)
     plp
     rtl
 
-RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y, camera_x, camera_y, (bool)is_visible)
+RenderObject: ; args (address_ptr, anim_state, obj_attributes, global_x, global_y, camera_x, camera_y, (bool)is_visible)
     php
     pha
     phx
     phy
-
     ldx #0
     ldy #0
 
@@ -183,7 +194,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
 
     ; simplified code
 
-    ; *object[] = object_ptr; 
+    ; *object[] = &object_ptr; 
     ; object_size = *object[];
     ; j = (anim_state * object_size) + 1;
     ; for (i = 1, j; i < object_size * 2; i++, j++) {
@@ -193,31 +204,29 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
           ; screen_y = global_y - camera_y + ((object_offset & 0xF0) * 8);
           ; if (screen_x < screen_width && screen_y < screen_height) 
           ; {
-              ;   OAMDATA(screen_x, screen_y, obj_graph, obj_attributes);
+          ;   OAMDATA(screen_x, screen_y, obj_graph, obj_attributes);
           ; }
     ; }
 
-    a8
-    ldx v_arg001
-    lda object_id, x
+    lda v_arg001 
     sta $0
     inx
     txa
-
     lda ($0), y
+    a8
     asl
-    sta object_size
-    iny
-    lda ($0), y
-    sta object_frames
-
-    lda object_size
-    sta v_arg_multiplicand
+    sta local_var001 ; object size
+    xba
+    sta local_var002 ; object frames
+    xba 
+    a16
     lda v_arg002
     beq +
-    sta v_arg_multiplier
-    jsl v_Multiply
-    lda mpy_value
+    sta M7A
+    lda local_var001
+    sta M7B
+  ; jsl v_Multiply
+    lda MPYL
   + tay
     iny
     iny
@@ -226,22 +235,24 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     .loop:
     a16
     lda ($0), y
-   ; xba
-   ; pha
-   ; xba
+    a8
+    xba
+    pha
+    xba
     pha
     and #%00001111
     beq +
     asl 
     asl
+    asl 
     asl
-    asl
-  + adc v_arg004
+  + a16
+    adc v_arg004
     sec
     sbc v_arg006
     bmi +
-    sta local_screen_x
-    cmp screen_width
+    sta screen_x
+    cmp #screen_width
     bcs + 
 
     pla
@@ -250,19 +261,19 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     sec
     sbc v_arg007
     bmi +   
-    sta local_screen_y
-    cmp screen_height
+    sta screen_y
+    cmp #screen_height
     bcs + 
     iny
     a8
 
-    lda local_screen_x
+    lda screen_x
     sta OAM_BUFFER, x
     inx
-    lda local_screen_y
+    lda screen_y
     sta OAM_BUFFER, x
     inx
-    lda ($0), y
+    pla 
     sta OAM_BUFFER, x
     inx
     lda v_arg003
@@ -270,7 +281,7 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     inx
     stx oam_buffer_offset
   + iny
-    cpy object_size
+    cpy local_var001 
     bne .loop
 
     ply
@@ -279,22 +290,21 @@ RenderObject: ; args (object_id, anim_state, obj_attributes, global_x, global_y,
     plp 
     rtl
 
-RenderUi: ; args (object_id, anim_state, x, y, attributes)
+RenderUi: ; args (address_ptr, anim_state, x, y, attributes)
     php
     pha
     phx
     phy
 
     ldy #0
-    ldx v_arg001
-    lda object_list, x
+    lda v_arg001
     sta $0
     lda v_arg002
     sta v_arg_multiplicand
     lda ($0), y
     sta object_size
     sta v_arg_multiplier
-    jsl vMultiply
+    jsl v_Multiply
     lda mpy_value
   ; asl
     tay
@@ -337,8 +347,6 @@ RenderUi: ; args (object_id, anim_state, x, y, attributes)
 ChangeScreenMode: ; args (bg_mode, bg3_priority, (bool)bg1_sprite_size, (bool)bg2_sprite_size, (bool)bg3_sprite_size, (bool), bg4_sprite_size)
     php
     pha
-    phx
-    phy
 
     lda BGMODE
     and #%11110000
@@ -351,15 +359,9 @@ ChangeScreenMode: ; args (bg_mode, bg3_priority, (bool)bg1_sprite_size, (bool)bg
     ora BGMODE_mirror
     sta BGMODE_mirror
 
-    ply
-    plx
     pla
     plp
     rtl
-
-FadeIn: 
-
-FadeOut:
 
 SetCameraPos: ; args (x, y, bg_layer)
     php
@@ -374,9 +376,9 @@ SetCameraPos: ; args (x, y, bg_layer)
     sec
     sbc global_cam_x
     bmi +
-    ; eor #255
-    ; clc 
-    ; adc #1
+  ; eor #255
+  ; clc 
+  ; adc #1
     adc scroll_reg_mirror_x, x
     sta scroll_reg_mirror_x, x
     bra ++
@@ -415,21 +417,67 @@ SetCameraPos: ; args (x, y, bg_layer)
     plp
     rtl
 
-CheckCollisionObj: 
+CheckCollisionObj: ; args (object_1, object_2) 
     php
     pha
     phx
     phy
 
-    ; return (object_active_collision[obj_1 * 2]);
+    ; int y1 = OBJ_ACTIVE_VER[object_1 << 1];
+    ; int y2 = OBJ_ACTIVE_VER[object_2 << 1];
+    ; int x1 = OBJ_ACTIVE_HOR[object_1 << 1];
+    ; int x2 = OBJ_ACTIVE_HOR[object_2 << 1];
+    ; int *object = &OBJ_ACTIVE_GFX_POINTER[object_2 << 1]; 
+    ; if ((y2 - y1) <= OBJ_ACTIVE_GFX[object_2 >> 1]) {
+    ;   if ((x2 - x1) <= OBJ_ACTIVE_GFX[object_2 >> 1 + 1]) {
+    ;       return 1;    
+    ;   }
+    ;   return -1;
+    ; }
+    ; return 0;
 
-    ply
+    a16
+    stz ret_value
+    asl v_arg001 
+    tax
+    asl v_arg002
+    tay
+    lda OBJ_ACTIVE_HOR, x
+    sta local_var001
+    lda OBJ_ACTIVE_VER, x
+    sta local_var002
+    lda OBJ_ACTIVE_HOR, y
+    sec
+    sbc local_var001
+    sta local_var001
+    lda OBJ_ACTIVE_VER, y
+    sec
+    sbc local_var002
+    sta local_var002
+    lda OBJ_ACTIVE_GFX_POINTER, y 
+    sta $0 
+    iny 
+    lda OBJ_ACTIVE_GFX_POINTER, y
+    sta $3
+    ldy #2
+    lda ($0), y
+    sta local_var003
+    a8
+    lda local_var002
+    cmp local_var004
+    bcs +
+    lda local_var001
+    cmp local_var003
+    bcs +
+    inc ret_value
+
+  + ply
     plx
     pla 
     plp
     rtl
 
-CheckCollisionMapToObj: ; args (obj_id, bg_layer)
+CheckCollisionMapToObj: ; args (object_id, bg_layer)
     php
     pha
     phx
@@ -439,25 +487,25 @@ CheckCollisionMapToObj: ; args (obj_id, bg_layer)
     ; int address = current_scene + bg_layer * 2;
     ; *map_pointer = scene_map_ptr[address];
     ; int map_width = *map_pointer[];
-    ; int x = obj_active_hor[obj_id*2];
-    ; int y = obj_active_ver[obj_id*2];
+    ; int x = OBJ_ACTIVE_HOR[object_id << 1];
+    ; int y = OBJ_ACTIVE_VER[object_id << 1];
     ; x = x / tile_size;
     ; y = y / tile_size;
     ; int pos = y * map_width + x;
     ; int col = *map_pointer[pos];
     ; return col;
-
-    lda current_scene
-    clc
-    adc v_arg002
+ 
+    lda v_arg002
     asl
-    tax 
-    lda scene_map_ptr, x 
+    adc v_arg002
+    tax
+    lda scene_ptr, x 
     sta $2
     inx
-    lda scene_map_ptr, x
+    inx
+    lda scene_ptr, x
     sta $4
-    lda ($0), y 
+    lda ($2), y 
     sta local_var001 ; map_width
 
     lda v_arg001
@@ -472,7 +520,7 @@ CheckCollisionMapToObj: ; args (obj_id, bg_layer)
     lsr
     lsr
     lsr
-    sta local_var003 ; y
+  ; sta local_var003 ; y
     clc
     adc local_var002
     sta v_arg001
@@ -480,7 +528,7 @@ CheckCollisionMapToObj: ; args (obj_id, bg_layer)
     sta v_arg002
     jsl m_Multiply
     ldy mpy_value 
-    lda ($0), y
+    lda ($2), y
     sta ret_value
 
     ply
@@ -489,14 +537,42 @@ CheckCollisionMapToObj: ; args (obj_id, bg_layer)
     plp
     rtl
 
-CheckCollisionMap: ; args (global_x, global_y, bg_layer)
+CheckCollisionMap: ; args (address_ptr, global_x, global_y)
     php
     pha
-    phx
     phy
+    ldy #0
+
+    ; int *address = &address_ptr;
+    ; int width = *address[];
+    ; int offset = ((y/8) * width + (x/8));
+    ; return *address[offset];
+
+    a16
+    lda v_arg002
+    lsr 
+    lsr 
+    lsr 
+    sta v_arg002
+    lda v_arg001
+    sta ($2)
+    a8
+    lda ($2), y  
+    sta M7A
+    a16
+    lda v_arg003
+    lsr 
+    lsr
+    lsr
+    sta M7B
+    lda MPYL
+    clc 
+    adc v_arg002
+    tay
+    lda ($2), y
+    sta ret_value
 
     ply
-    plx
     pla 
     plp
     rtl
@@ -520,7 +596,6 @@ InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)screen_s
     ; OBJ_ACTIVE_HOR[i] = (global_x / (screen_space * screen_width));
     ; OBJ_ACTIVE_VER[i] = (global_y / (screen_space * screen_height));
 
-
     ; int i, k = (object_active_sizeof << 1);
     ; OBJ_ACTIVE[i++] = (sizeof(&object_ptr) << 1);
     ; OBJ_ACTIVE[i++] = object_ptr; 
@@ -532,7 +607,6 @@ InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)screen_s
     ;   OBJ_ACTIVE[i] = *object_ptr[j]; 
     ; } 
     ; object_active_sizeof = i;
-
 
     ; int i = (obj_active_sizeof << 1);
     ; OBJ_POINTER[i] = object_ptr; 
@@ -555,16 +629,16 @@ InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)screen_s
     sta $8
     sta local_var001
     lda v_arg002
-    sta OBJ_ACTIVE_HOR, y 
+    sta OBJ_ACTIVE_HOR,   y 
     lda v_arg003
-    sta OBJ_ACTIVE_VER, y
+    sta OBJ_ACTIVE_VER,   y
     a8
     lda v_arg004
     sta OBJ_ACTIVE_FLAGS, y
     a16
     phy
     sty v_arg001
-    lda #20
+    lda (16 << 1)
     sta v_arg002
     jsl m_Multiply
     ldx mpy_value
@@ -587,7 +661,7 @@ InstantiateObject: ; args (object_ptr, global_x, global_y, flags, (bool)screen_s
     sta OBJ_ACTIVE_POINTER, y 
     lda OBJ_ACTIVE_SIZE
     clc
-    adc #2
+    adc #1
     sta OBJ_ACTIVE_SIZE
 
     ply
@@ -612,13 +686,13 @@ DeallocateObject: ; args ()
     ; OBJ_DATA[i] = 0x0000;
     ; }
 
-    lda v_arg001
+    ldx v_arg001
     asl
-    tay
+    tax
     lda #0
     sta OBJ_ACTIVE_POINTER, x
-    sta OBJ_ACTIVE_HOR, x
-    sta OBJ_ACTIVE_VER, x
+    sta OBJ_ACTIVE_HOR,   x
+    sta OBJ_ACTIVE_VER,   x
     sta OBJ_ACTIVE_FLAGS, x
     phx
     stx v_arg001
@@ -641,6 +715,10 @@ DeallocateObject: ; args ()
     plp
     rtl
 
+FadeIn: 
+
+FadeOut:
+
 ; Low-level internal functions
 
 GetInput:
@@ -662,9 +740,7 @@ GetInput:
     plp
     rtl 
 
-UpdateInput:
-
-UpdateCollision: 
+UpdateCollisions: 
     php
     pha
     phx
@@ -673,7 +749,7 @@ UpdateCollision:
     ldy #1
 
     ; for (i = 0; i < obj_active_size * 4; i++) {
-    ;   obj_active_collision = 0xff; 
+    ;   obj_active_collision = 0x00; 
     ; }
     ; for (i = 0; i < obj_active_size * 4; i += 4) {
     ;   for (j = 1, k = 0; j < obj_active_size, k < obj_collision_limit; j++, k++) {
@@ -774,10 +850,15 @@ PushVRAMDataToScreen:
 
     .loop:
     jsr DMAInit
+    lda v_arg004
+    clc
+    adc #4096
+    sta v_arg004
     inx
     stx v_arg007
     cpx #4 
     bne .loop 
+    jsr ClearRenderingQueue
 
     ply
     plx
@@ -809,19 +890,53 @@ PushOAMDataToScreen:
     sta v_arg003 ; dest 
     lda #$0000
     sta v_arg004 ; dest_offset
-    lda oam_size
+    lda oam_buffer_offset
     sta v_arg005 ; length
     ldx #0
     stx v_arg006 ; format
     ldx #8
-    stx v_arg007 ; dma channel
+    stx v_arg007 ; channel
     ldx #0
     stx v_arg008 ; direction
     inx
     stx v_arg009 ; auto
 
     jsr DMAInit
+    jsr ClearOAM
 
+    ply
+    plx
+    pla 
+    plp
+    rtl
+
+PushDataToCGRAM:
+    php
+    pha
+    phx
+    phy
+
+    ldx #$7e
+    stx v_arg001 ; source_bank
+    lda CGRAM_BUFFER 
+    sta v_arg002 ; source
+    lda CGDATA
+    sta v_arg003 ; dest 
+    lda #$0000
+    sta v_arg004 ; dest_offset
+    lda cgram_buffer_offset
+    sta v_arg005 ; length
+    ldx #0
+    stx v_arg006 ; format
+    ldx #7
+    stx v_arg007 ; channel
+    ldx #0
+    stx v_arg008 ; direction
+    inx
+    stx v_arg009 ; auto
+
+    jsr DMAInit
+    
     ply
     plx
     pla 
@@ -841,14 +956,22 @@ RenderActiveObjects:
     ;   *object = OBJ_ACTIVE_POINTER[j]; 
     ;   x = OBJ_ACTIVE_HOR[j]; 
     ;   y = OBJ_ACTIVE_HOR[j];
-    ;   anim = OBJ_ACTIVE_ANIM[i];
+    ;   anim = OBJ_ACTIVE_GFX[i];
     ;   attributes = OBJ_ACTIVE_FLAGS[i];
     ;   RenderObject(*object, anim, attributes, x, y, camera_x, camera_y);
     ; }
 
+    lda object_active_size 
+    asl
+    sta local_var001 
+    lda global_cam_x
+    sta v_arg006
+    lda global_cam_y
+    sta v_arg007
+    .loop:
     lda OBJ_ACTIVE_POINTER, y
     sta v_arg001 
-    lda OBJ_ACTIVE_ANIM, x
+    lda OBJ_ACTIVE_GFX,  x
     sta v_arg002 ; anim
     a8
     lda OBJ_ACTIVE_FLAGS, x
@@ -856,14 +979,16 @@ RenderActiveObjects:
     a16
     lda OBJ_ACTIVE_HOR, y 
     sta v_arg004 ; x
-    lda OBJ_ACTIVE_HOR, y
+    lda OBJ_ACTIVE_VER, y
     sta v_arg005 ; y
-    lda global_cam_x
-    sta v_arg006
-    lda global_cam_y
-    sta v_arg007
     
     jsr RenderObject
+
+    inx
+    inx
+    iny 
+    cpx local_var001
+    bne .loop
 
     ply
     plx
@@ -915,28 +1040,75 @@ UpdateAnimations:
     pha
     phx
     phy
+    ldx #0
+    ldy #0
 
-    ; for (i = 0; j = 0; i < obj_active_onscreen; i++, j += 2) {
-    ;   int address = OBJ_ACTIVE_ANIM_POINTER[j];
-    ;   int offset = address[];
-    ;   offset = offset * 10 + sizeof(offset);
+    ; *obj_pointer = &OBJ_ACTIVE_POINTER[sprite_order_table];
+    ; for (i = 0; j = 0; i < obj_active; i++, j += 2) {
+    ;   int address = OBJ_ACTIVE_GFX_POINTER[j];
+    ;   int offset = *address[];
+    ;   offset = offset * 16 + sizeof(offset);
     ;   int anim_frame = address[offset];
-    ;   if (!address[offset + anim_frame] <= 0x00) { 
-    ;       address[offset + anim_frame]--; 
+    ;   int anim_timer = anim_frame + 1;
+    ;   if (!address[offset + anim_timer] > 0x00) { 
+    ;       address[offset + anim_timer] -= 1; 
     ;   }
     ;   else {
-    ;       anim_frame++;
-    ;       OBJ_ACTIVE_ANIM[i] = animation_frame;
-    ;       animation_frame++;
-    ;       if (address[offset + anim_frame] == 0xfe) {
+    ;       address[offset + anim_frame] = *address[(offset + anim_frame / 2) * 16];
+    ;       anim_frame = anim_timer += 2;
+    ;       OBJ_ACTIVE_GFX[i] = address[offset + anim_frame];
+    ;       if (address[offset + anim_timer] == 0xfe) {
     ;           address[offset] = 0x00;
     ;       }
     ;       else {
-    ;       address[offset] = anim_frame;
+    ;           address[offset] = anim_frame;
     ;       }
     ;   }
     ;
 
+    lda object_active_size
+    asl
+    sta local_var003
+    .loop:
+    a16 
+    lda OBJ_ACTIVE_GFX_POINTER, x 
+    sta $0
+    inx 
+    a8
+    lda OBJ_ACTIVE_GFX_POINTER, x
+    sta $3
+    lda ($0), y
+    phy
+    asl
+    asl 
+    asl
+    asl
+    sta local_var001
+    inc a
+    sta local_var002
+    tay 
+    lda ($0), y
+    cmp #0
+    beq 
+
+    inc local_var002
+    inc local_var001
+    sta OBJ_ACTIVE_GFX, x
+    pha
+    iny
+    lda ($0), y
+    cmp #$fe
+    bne +
+    lda #0
+    bra ++
+  + pla
+ ++ ply
+    sta ($0), y
+    inx
+    inx
+    cpx local_var003
+    bne .loop
+    
     ply
     plx
     pla
@@ -1028,7 +1200,7 @@ DMAInit: ; args (source_bank, source_address, dest, dest_offset, length, format,
     cpy #0
     bne .loop_2
     ply
-  + sta (HDMAEN_mirror), y
+  + sta (DMAEN_mirror), y
 
     pla 
     ply
@@ -1103,29 +1275,153 @@ HDMAInit: ; args (source_bank, source_address, dest, indirect_bank, indirect_add
     plp
     rts
 
-ConvertToDecimal:
+ConvertToDecimal: ; Credits to OmegaMatrix, until I figure out how to code this
+    php 
+    pha 
+    phx
+    phy
+
+    lda    v_arg001
+    a8
+    sta    hexHigh               ;3  @9
+    xba 
+    tax
+    sta    hexLow                ;3  @12
+    xba
+  ; tax                          ;2  @14
+    lsr                          ;2  @16
+    lsr                          ;2  @18   integer divide 1024 (result 0-63)
+    cpx    #$A7                  ;2  @20   account for overflow of multiplying 24 from 43,000 ($A7F8) onward,
+    adc    #1                    ;2  @22   we can just round it to $A700, and the divide by 1024 is fine...
+    ;at this point we have a number 1-65 that we have to times by 24,
+    ;add to original sum, and Mod 1024 to get a remainder 0-999
+    sta    temp                  ;3  @25
+    asl                          ;2  @27
+    adc    temp                  ;3  @30  x3
+    tay                          ;2  @32
+    lsr                          ;2  @34
+    lsr                          ;2  @36
+    lsr                          ;2  @38
+    lsr                          ;2  @40
+    lsr                          ;2  @42
+    tax                          ;2  @44
+    tya                          ;2  @46
+    asl                          ;2  @48
+    asl                          ;2  @50
+    asl                          ;2  @52
+    clc                          ;2  @54
+    adc    hexLow                ;3  @57
+    sta    hexLow                ;3  @60
+    txa                          ;2  @62
+    adc    hexHigh               ;3  @65
+    sta    hexHigh               ;3  @68
+    ror                          ;2  @70
+    lsr                          ;2  @72
+    tay                          ;2  @74    integer divide 1,000 (result 0-65)
+
+    lsr                          ;2  @76    split the 1,000 and 10,000 digit
+    tax                          ;2  @78
+    lda    ShiftedBcdTab,X       ;4  @82
+    tax                          ;2  @84
+    rol                          ;2  @86
+    and    #$0F                  ;2  @88
+  IF ASCII_OFFSET
+    ora    #ASCII_OFFSET
+  ENDIF
+    sta    decThousands          ;3  @91
+    txa                          ;2  @93
+    lsr                          ;2  @95
+    lsr                          ;2  @97
+    lsr                          ;2  @99
+  IF ASCII_OFFSET
+    ora    #ASCII_OFFSET
+  ENDIF
+    sta    decTenThousands       ;3  @102
+
+    lda    hexLow                ;3  @105
+    cpy    temp                  ;3  @108
+    bmi    .doSubtract           ;2³ @110/111
+    beq    useZero               ;2³ @112/113
+    adc    #23 + 24              ;2  @114
+.doSubtract:
+    sbc    #23                   ;2  @116
+    sta    hexLow                ;3  @119
+useZero:
+    lda    hexHigh               ;3  @122
+    sbc    #0                    ;2  @124
+
+Start100s:
+    and    #$03                  ;2  @126
+    tax                          ;2  @128   0,1,2,3
+    cmp    #2                    ;2  @130
+    rol                          ;2  @132   0,2,5,7
+  IF ASCII_OFFSET
+    ora    #ASCII_OFFSET
+  ENDIF
+    tay                          ;2  @134   Y = Hundreds digit
+
+    lda    hexLow                ;3  @137
+    adc    Mod100Tab,X           ;4  @141    adding remainder of 256, 512, and 256+512 (all mod 100)
+    bcs    .doSub200             ;2³ @143/144
+
+.try200:
+    cmp    #200                  ;2  @145
+    bcc    .try100               ;2³ @147/148
+.doSub200:
+    iny                          ;2  @149
+    iny                          ;2  @151
+    sbc    #200                  ;2  @153
+.try100:
+    cmp    #100                  ;2  @155
+    bcc    HexToDec99            ;2³ @157/158
+    iny                          ;2  @159
+    sbc    #100                  ;2  @161
+
+HexToDec99
+    lsr                          ;2  @163
+    tax                          ;2  @165
+    lda    ShiftedBcdTab,X       ;4  @169
+    tax                          ;2  @171
+    rol                          ;2  @173
+    and    #$0F                  ;2  @175
+  IF ASCII_OFFSET
+    ora    #ASCII_OFFSET
+  ENDIF
+    sta    decOnes               ;3  @178
+    txa                          ;2  @180
+    lsr                          ;2  @182
+    lsr                          ;2  @184
+    lsr                          ;2  @186
+  IF ASCII_OFFSET
+    ora    #ASCII_OFFSET
+  ENDIF
+    ply 
+    plx 
+    pla
+    rts                          ;6  @192   A = tens digit
 
 ; Math (A few math functions. I like writing math functions so i'll add many more of them.)
 
 m_Multiply: ; args (multiplicand, multiplier, (bool)m7_matrix)
     php
+    lda BGMODE
     lda v_arg_multiplicand
-    sta WRMPYA
+    sta M7A
     lda v_arg_multiplier
-    sta WRMPYB
-    nop
-    lda MPYL
-    sta mpy_value
-    lda MPYH
-    sta mpy_value_h
+    sta M7B
+  ; lda MPYL
+  ; sta ret
+  ; lda MPYH
+  ; sta ret_value+1;
     plp
     rtl
 
 m_Divide: ; args (dividend, divisor)
     php
-    lda v_arg_dividendl
+    a8 
+    lda v_arg_dividend
     sta WRDIVL
-    lda v_arg_dividendh
+    lda v_arg_dividend+1
     sta WRDIVH
     lda v_arg_div_divisor
     sta WRDIVB
@@ -1133,13 +1429,10 @@ m_Divide: ; args (dividend, divisor)
     nop 
     nop
     lda RDDIVL
-    sta div_value 
-    lda RDVILH
-    sta div_value_h
-    lda RDMPYL
-    sta div_rem
-    lda RDMPYH
-    sta div_rem_h
+    ldx RDMPYL
+    stx div_rem
+    ldx RDMPYH
+    stx div_rem_h 
     plp
     rtl 
 
@@ -1149,6 +1442,7 @@ m_GetDirection: ; args (x1, y1, x2, y2)
     phx
     phy
 
+    a16 
     lda v_arg001
     ldx v_arg002
     sec
@@ -1159,6 +1453,7 @@ m_GetDirection: ; args (x1, y1, x2, y2)
     sbc v_arg004
     sta ret_value+1
     pla
+    a8
     sta ret_value    
 
     ply
@@ -1181,11 +1476,11 @@ m_Clamp: ; args (value, clamp_min, clamp_max)
     lda v_arg002
     cmp v_arg001
     bcc +
-    sta v_arg001
+    sta ret_value
   + lda v_arg003
     cmp v_arg001
     bcs +
-    sta v_arg001
+    sta ret_value
 
   + ply 
     plx
@@ -1195,7 +1490,6 @@ m_Clamp: ; args (value, clamp_min, clamp_max)
 
 m_PowerOf: ; args (base, exponent)
     php
-    pha
     phx
     phy
     ldx #0
@@ -1204,7 +1498,6 @@ m_PowerOf: ; args (base, exponent)
     sta w_var001
     stx v_loop001
 
-    ; ex. 2^16 = 65536; 
     ; a = base;
     ; for (i = 0; i < exponent; i++) {
     ;   a = a * base; 
@@ -1221,22 +1514,30 @@ m_PowerOf: ; args (base, exponent)
     inx
     cpx v_loop001
     bne .loop
-    sta ret_value
 
     ply 
     plx
-    pla 
     plp
     rtl
 
 m_Lerp: ; args (a, b, alpha)
     php
     pha
-    phx
-    phy
 
-    ply 
-    plx
+    ; return (a + (b - a) * alpha);
+
+    lda v_arg002 
+    sec
+    sbc v_arg001 
+    sta local_var001
+    lda v_arg001
+    adc local_var001
+    sta M7A
+    lda v_arg003
+    sta M7B
+    lda MPYL
+    sta ret_value
+
     pla 
     plp
     rtl
@@ -1244,24 +1545,39 @@ m_Lerp: ; args (a, b, alpha)
 m_Min: ; args (value, min)
     php
     pha
-    phx
-    phy
 
-    ply 
-    plx
-    pla 
+    ; if (value < min) {
+    ;   return 0; 
+    ; else {
+    ;   return 1;
+    ; }
+
+    lda v_arg001
+    cmp v_arg002
+    bcc +
+    inc ret_value
+
+  + pla 
     plp
     rtl
 
 m_Max: ; args (value, max)
     php
     pha
-    phx
-    phy
 
-    ply 
-    plx
-    pla 
+    ; if (value > max) {
+    ;   return 0;
+    ; else {
+    ; return 1;
+    ; }
+
+    stz ret_value
+    lda v_arg001
+    cmp v_arg002
+    bcs +
+    inc ret_value
+  
+  + pla
     plp
     rtl
 
